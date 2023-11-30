@@ -1,0 +1,11 @@
+*.log
+*.env
+*.yaml
+*.yml
+*.json
+Makefile
+*.md
+*.txt
+*.proto
+**/accounts_db/
+**/kafka/
