@@ -7,6 +7,8 @@
 + [Configuration](#configuration)
 + [Metrics](#metrics)
 + [Docs](#docs)
++ [Author](#author)
++ [License](#license)
 ---------
 
 # Accounts service
@@ -88,3 +90,12 @@ The service uses Prometheus and Jaeger and supports distribution tracing
 # Docs
 [Swagger docs](swagger/docs/accounts_service_v1.swagger.json)
 
+# Author
+
+- [@Falokut](https://github.com/Falokut) - Primary author of the project
+
+# License
+
+This project is licensed under the terms of the [MIT License](https://opensource.org/licenses/MIT).
+
+---
