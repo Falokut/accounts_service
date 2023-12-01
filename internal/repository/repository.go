@@ -32,8 +32,8 @@ type AccountRepository interface {
 
 // CachedAccount represents the cached account data.
 type CachedAccount struct {
-	Username string
-	Password string
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 // RegistrationCacheRepository provides methods to interact with the registration cache.

@@ -738,7 +738,7 @@
         "email": {
           "type": "string"
         },
-        "usename": {
+        "username": {
           "type": "string"
         },
         "password": {

@@ -6,7 +6,7 @@ import "google/protobuf/timestamp.proto";
 
 message CreateAccountRequest {
     string Email = 1 [json_name = "email"];
-    string Username = 2 [json_name = "usename"];
+    string Username = 2 [json_name ="username"];
     string Password = 3 [json_name = "password"];
     string RepeatPassword = 4 [json_name = "repeat_password"];
 }
@@ -23,7 +23,7 @@ message VerifyAccountRequest {
 message SignInRequest {
     string Email = 1 [json_name = "email"];
     string Password = 2 [json_name = "password"];
-    string  SessionInfo = 3 [json_name = "session_info"];
+    string SessionInfo = 3 [json_name = "session_info"];
     string ClientIP = 4[json_name = "client_ip"]; 
 }
 
