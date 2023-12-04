@@ -14,12 +14,12 @@ import (
 
 var (
 	ErrNotFound                = errors.New("not found")
-	ErrNoCtxMetaData           = errors.New("no context metadata")
+	ErrNoCtxMetaData           = errors.New("no context metadata provided")
 	ErrInvalidSessionId        = errors.New("invalid session id")
 	ErrAlreadyExist            = errors.New("already exist")
 	ErrInvalidMachineID        = errors.New("invalid machine id")
 	ErrInvalidClientIP         = errors.New("invalid client ip")
-	ErrAccessDenied            = errors.New("access denied. Invalid session or client ip")
+	ErrAccessDenied            = errors.New("access denied. Invalid session or machine id")
 	ErrInternal                = errors.New("internal error")
 	ErrAccountAlreadyActivated = errors.New("account already activated")
 	ErrInvalidArgument         = errors.New("invalid input data")

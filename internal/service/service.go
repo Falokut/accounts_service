@@ -559,33 +559,15 @@ func (s *AccountService) getSessionIDFromCtx(ctx context.Context) (string, error
 	return sessionID[0], nil
 }
 
-// func (s *AccountService) getClientIPFromCtx(ctx context.Context) (string, error) {
-// 	md, ok := metadata.FromIncomingContext(ctx)
-// 	if !ok {
-// 		return "", s.errorHandler.createErrorResponce(ErrNoCtxMetaData, "no context metadata provided")
-// 	}
-
-// 	clientIP := md.Get(ClientIpContext)
-// 	if len(clientIP) == 0 || clientIP[0] == "" {
-// 		return "", s.errorHandler.createErrorResponce(ErrInvalidClientIP, "no client ip provided")
-// 	}
-
-// 	if net.ParseIP(clientIP[0]) == nil {
-// 		return "", s.errorHandler.createErrorResponce(ErrInvalidClientIP, "invalid client ip address")
-// 	}
-
-// 	return clientIP[0], nil
-// }
-
 func (s *AccountService) getMachineIDFromCtx(ctx context.Context) (string, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return "", s.errorHandler.createErrorResponce(ErrNoCtxMetaData, "no context metadata provided")
+		return "", s.errorHandler.createErrorResponce(ErrNoCtxMetaData, "")
 	}
 
 	MachineID := md.Get(MachineIdContext)
 	if len(MachineID) == 0 || MachineID[0] == "" {
-		return "", s.errorHandler.createErrorResponce(ErrInvalidMachineID, "no client ip provided")
+		return "", s.errorHandler.createErrorResponce(ErrInvalidMachineID, "no machine id provided")
 	}
 
 	return MachineID[0], nil

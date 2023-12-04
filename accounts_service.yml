@@ -58,7 +58,7 @@ services:
       - accounts_service_network
     environment:
       ALLOW_EMPTY_PASSWORD: no
-      REDIS_PASSWORD: ${REDIS_AOF_ENABLED}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       REDIS_AOF_ENABLED: ${REDIS_AOF_ENABLED}
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
