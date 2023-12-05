@@ -13,8 +13,7 @@ import (
 )
 
 const (
-	accountTableName  = "accounts"
-	profilesTableName = "profiles"
+	accountTableName = "accounts"
 )
 
 type postgreRepository struct {
@@ -42,9 +41,11 @@ func (r *postgreRepository) Shutdown() error {
 // CreateAccount creates a new account in the database.
 func (r *postgreRepository) CreateAccount(ctx context.Context, account model.Account) (*sql.Tx, string, error) {
 	span, _ := opentracing.StartSpanFromContext(ctx,
-		"PostgreRepository.CreateAccountAndProfile")
-
+		"PostgreRepository.CreateAccount")
 	defer span.Finish()
+
+	var err error
+	defer span.SetTag("has_errors", err != nil)
 
 	query := fmt.Sprintf("INSERT INTO %s (email, password_hash, registration_date) VALUES ($1, $2, $3) RETURNING id;", accountTableName)
 	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
@@ -55,7 +56,7 @@ func (r *postgreRepository) CreateAccount(ctx context.Context, account model.Acc
 	row := tx.QueryRowContext(ctx, query, account.Email, account.Password, account.RegistrationDate)
 
 	var id string
-	if err := row.Scan(&id); err != nil {
+	if err = row.Scan(&id); err != nil {
 		tx.Rollback()
 		return nil, "", err
 	}
@@ -71,17 +72,20 @@ func (r *postgreRepository) IsAccountWithEmailExist(ctx context.Context, email s
 
 	defer span.Finish() // Finish the span when the function ends.
 
+	var err error
+	defer span.SetTag("has_errors", err != nil && !errors.Is(err, sql.ErrNoRows))
+
 	// Prepare the SQL query to check for the existence of the account.
 	query := fmt.Sprintf("SELECT id FROM %s WHERE email=$1 LIMIT 1;", accountTableName)
 
 	var UUID string
 	// Execute the query to check for the existence of the account with the given email.
-	err := r.db.GetContext(ctx, &UUID, query, email)
-	if err != nil && err != sql.ErrNoRows {
-		return false, err // Return false and the error if an error other than sql.ErrNoRows occurs.
-	}
-	if err == sql.ErrNoRows {
+	err = r.db.GetContext(ctx, &UUID, query, email)
+	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil // Return false if no rows were found (account does not exist).
+	}
+	if err != nil {
+		return false, err // Return false and the error if an error other than sql.ErrNoRows occurs.
 	}
 
 	return true, nil // If no error occurred, the account exists.
@@ -93,13 +97,16 @@ func (r *postgreRepository) GetAccountByEmail(ctx context.Context, email string)
 	span, _ := opentracing.StartSpanFromContext(ctx, "PostgreRepository.GetAccountByEmail")
 	defer span.Finish()
 
+	var err error
+	defer span.SetTag("has_errors", err != nil)
+
 	// Prepare the SQL query to retrieve the user account based on the provided email.
 	query := fmt.Sprintf("SELECT * FROM %s WHERE email=$1 LIMIT 1;", accountTableName)
 
 	var acc model.Account
 	// Execute the query to retrieve the user account.
-	err := r.db.GetContext(ctx, &acc, query, email)
-	if err == sql.ErrNoRows {
+	err = r.db.GetContext(ctx, &acc, query, email)
+	if errors.Is(err, sql.ErrNoRows) {
 		return model.Account{}, errors.New("user with this email doesn't exist") // Return an error if no account was found with the provided email.
 	}
 
@@ -113,6 +120,9 @@ func (r *postgreRepository) ChangePassword(ctx context.Context, email string, pa
 	span, _ := opentracing.StartSpanFromContext(ctx, "PostgreRepository.ChangePassword")
 
 	defer span.Finish() // Finish the span when the function ends.
+
+	var err error
+	defer span.SetTag("has_errors", err != nil)
 
 	// Prepare the SQL query to update the password hash of the account with the given email.
 	query := fmt.Sprintf("UPDATE %s SET password_hash=$1 WHERE email=$2;", accountTableName)
@@ -134,10 +144,12 @@ func (r *postgreRepository) ChangePassword(ctx context.Context, email string, pa
 
 // DeleteAccount deletes the account with the given ID from the database.
 // It takes the ID of the account as input and returns an error, if any.
-func (r *postgreRepository) DeleteAccount(ctx context.Context, AccountID string) (*sql.Tx, error) {
+func (r *postgreRepository) DeleteAccount(ctx context.Context, accountID string) (*sql.Tx, error) {
 	// Start a new span for tracing.
 	span, _ := opentracing.StartSpanFromContext(ctx, "PostgreRepository.DeleteAccount")
 	defer span.Finish() // Finish the span when the function ends.
+	var err error
+	defer span.SetTag("has_errors", err != nil)
 
 	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
@@ -147,7 +159,7 @@ func (r *postgreRepository) DeleteAccount(ctx context.Context, AccountID string)
 	query := fmt.Sprintf("DELETE FROM %s WHERE id=$1;", accountTableName)
 
 	// Execute the query to delete the account.
-	_, err = tx.ExecContext(ctx, query, AccountID)
+	_, err = tx.ExecContext(ctx, query, accountID)
 	if err != nil {
 		tx.Rollback()
 		return nil, err

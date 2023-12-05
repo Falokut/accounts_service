@@ -66,17 +66,17 @@ func (e *errorHandler) createErrorResponce(err error, developerMessage string) e
 	return err
 }
 
-func (e *errorHandler) createExtendedErrorResponce(err error, DeveloperMessage, UserMessage string) error {
+func (e *errorHandler) createExtendedErrorResponce(err error, developerMessage, userMessage string) error {
 	var msg string
-	if DeveloperMessage == "" {
+	if developerMessage == "" {
 		msg = err.Error()
 	} else {
-		msg = fmt.Sprintf("%s. error: %v", DeveloperMessage, err)
+		msg = fmt.Sprintf("%s. error: %v", developerMessage, err)
 	}
 
 	extErr := status.New(grpc_errors.GetGrpcCode(err), msg)
-	if len(UserMessage) > 0 {
-		extErr, _ = extErr.WithDetails(&accounts_service.UserErrorMessage{Message: UserMessage})
+	if len(userMessage) > 0 {
+		extErr, _ = extErr.WithDetails(&accounts_service.UserErrorMessage{Message: userMessage})
 		if extErr == nil {
 			e.logger.Error(err)
 			return err

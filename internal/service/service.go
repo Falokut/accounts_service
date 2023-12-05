@@ -14,7 +14,6 @@ import (
 	accounts_service "github.com/Falokut/accounts_service/pkg/accounts_service/v1/protos"
 	"github.com/Falokut/accounts_service/pkg/jwt"
 	"github.com/Falokut/accounts_service/pkg/metrics"
-	profiles_service "github.com/Falokut/accounts_service/pkg/profiles_service/v1/protos"
 	"github.com/Falokut/grpc_errors"
 	"github.com/google/uuid"
 	"github.com/opentracing/opentracing-go"
@@ -28,6 +27,18 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+type Profile struct {
+	AccountID        string
+	Email            string
+	Username         string
+	RegistrationDate time.Time
+}
+
+type ProfilesService interface {
+	CreateProfile(ctx context.Context, profile Profile) error
+	DeleteProfile(ctx context.Context, AccountID string) error
+}
+
 type AccountService struct {
 	accounts_service.UnimplementedAccountsServiceV1Server
 	repo                   repository.AccountRepository
@@ -38,19 +49,19 @@ type AccountService struct {
 	cfg                    *config.Config
 	metrics                metrics.Metrics
 	errorHandler           errorHandler
-	profilesService        profiles_service.ProfilesServiceV1Client
+	profilesService        ProfilesService
 }
 
 func NewAccountService(repo repository.AccountRepository, logger *logrus.Logger,
 	redisRepo repository.CacheRepo, emailWriter *kafka.Writer,
 	cfg *config.Config, metrics metrics.Metrics,
-	profilesService profiles_service.ProfilesServiceV1Client) *AccountService {
+	profilesService ProfilesService) *AccountService {
 
 	errorHandler := newErrorHandler(logger)
 	return &AccountService{repo: repo,
 		logger:                 logger,
 		redisRepo:              redisRepo,
-		nonActivatedAccountTTL: time.Hour,
+		nonActivatedAccountTTL: cfg.NonActivatedAccountTTL,
 		emailWriter:            emailWriter,
 		cfg:                    cfg,
 		metrics:                metrics,
@@ -73,33 +84,39 @@ func (s *AccountService) CreateAccount(ctx context.Context,
 	}
 	exist, err := s.repo.IsAccountWithEmailExist(ctx, in.Email)
 	if err != nil {
-		return nil, s.errorHandler.createExtendedErrorResponce(ErrInternal, err.Error(), "")
+		err = s.errorHandler.createExtendedErrorResponce(ErrInternal, err.Error(), "")
+		return nil, err
 	}
 	if exist {
-		return nil, s.errorHandler.createExtendedErrorResponce(ErrAlreadyExist, "", "a user with this email address already exists. "+
+		err = s.errorHandler.createExtendedErrorResponce(ErrAlreadyExist, "", "a user with this email address already exists. "+
 			"please try another one or simple log in")
+		return nil, err
 	}
 
 	inCache, err := s.redisRepo.RegistrationCache.IsAccountInCache(ctx, in.Email)
 	if err != nil {
-		return nil, s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		err = s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		return nil, err
 	}
 	if inCache {
-		return nil, s.errorHandler.createExtendedErrorResponce(ErrAlreadyExist, "", "a user with this email address already exists. "+
+		err = s.errorHandler.createExtendedErrorResponce(ErrAlreadyExist, "", "a user with this email address already exists. "+
 			"please try another one or verify email and log in")
+		return nil, err
 	}
 
 	s.logger.Info("Generating hash from password")
 	password_hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), config.GetConfig().Crypto.BcryptCost)
 	if err != nil {
-		return nil, s.errorHandler.createErrorResponce(ErrInternal, "can't generate hash")
+		err = s.errorHandler.createErrorResponce(ErrInternal, "can't generate hash")
+		return nil, err
 	}
 
 	err = s.redisRepo.RegistrationCache.CacheAccount(ctx, in.Email,
 		repository.CachedAccount{Username: in.Username, Password: string(password_hash)}, s.nonActivatedAccountTTL)
 
 	if err != nil {
-		return nil, s.errorHandler.createErrorResponce(ErrInternal, err.Error()+" can't cache account")
+		err = s.errorHandler.createErrorResponce(ErrInternal, err.Error()+" can't cache account")
+		return nil, err
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -121,39 +138,45 @@ func (s *AccountService) RequestAccountVerificationToken(ctx context.Context,
 
 	inAccountDB, err := s.repo.IsAccountWithEmailExist(ctx, in.Email)
 	if err != nil {
-		return nil, s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		err = s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		return nil, err
 	}
 	if inAccountDB {
-		return nil, s.errorHandler.createErrorResponce(ErrAccountAlreadyActivated, "")
+		err = s.errorHandler.createErrorResponce(ErrAccountAlreadyActivated, "")
+		return nil, err
 	}
 
 	vErr := validateEmail(in.Email)
 	if vErr != nil {
-		err = vErr
-		return nil, s.errorHandler.createExtendedErrorResponce(ErrInvalidArgument, vErr.DeveloperMessage, vErr.UserMessage)
+		err = s.errorHandler.createExtendedErrorResponce(ErrInvalidArgument, vErr.DeveloperMessage, vErr.UserMessage)
+		return nil, err
 	}
 
 	inCache, err := s.redisRepo.RegistrationCache.IsAccountInCache(ctx, in.Email)
 	if err != nil {
-		return nil, s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		err = s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		return nil, err
 	}
 	if !inCache {
 		s.metrics.IncCacheMiss("RequestAccountVerificationToken")
-		return nil, s.errorHandler.createExtendedErrorResponce(ErrNotFound, "", "a account with this email address not exist")
+		err = s.errorHandler.createExtendedErrorResponce(ErrNotFound, "", "a account with this email address not exist")
+		return nil, err
 	}
 	s.metrics.IncCacheHits("RequestAccountVerificationToken")
 
 	cfg := config.GetConfig()
 	token, err := jwt.GenerateToken(in.Email, cfg.JWT.VerifyAccountToken.Secret, cfg.JWT.VerifyAccountToken.TTL)
 	if err != nil {
-		return nil, s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		err = s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		return nil, err
 	}
 
 	URL := fmt.Sprintf("%s/%s", in.URL, token)
 	LinkTTL := cfg.JWT.VerifyAccountToken.TTL.Seconds()
 	body, err := json.Marshal(emailData{Email: in.Email, URL: URL, MailType: "account/activation", LinkTTL: LinkTTL})
 	if err != nil {
-		return nil, s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		err = s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		return nil, err
 	}
 
 	go func() {
@@ -179,7 +202,8 @@ func (s *AccountService) VerifyAccount(ctx context.Context,
 	s.logger.Info("Parsing token")
 	email, err := jwt.ParseToken(in.VerificationToken, config.GetConfig().JWT.VerifyAccountToken.Secret)
 	if err != nil {
-		return nil, s.errorHandler.createErrorResponce(ErrInvalidArgument, err.Error())
+		err = s.errorHandler.createErrorResponce(ErrInvalidArgument, err.Error())
+		return nil, err
 	}
 	err = s.createAccountAndProfile(ctx, email)
 	return &emptypb.Empty{}, err
@@ -194,11 +218,13 @@ func (s *AccountService) createAccountAndProfile(ctx context.Context, email stri
 	acc, err := s.redisRepo.RegistrationCache.GetCachedAccount(ctx, email)
 	if errors.Is(err, redis.Nil) {
 		s.metrics.IncCacheMiss("createAccountAndProfile")
-		return s.errorHandler.createErrorResponce(ErrNotFound, err.Error())
+		err = s.errorHandler.createErrorResponce(ErrNotFound, err.Error())
+		return err
 	}
 	if err != nil {
 		s.metrics.IncCacheMiss("createAccountAndProfile")
-		return s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		err = s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		return err
 	}
 	s.metrics.IncCacheHits("createAccountAndProfile")
 
@@ -211,22 +237,24 @@ func (s *AccountService) createAccountAndProfile(ctx context.Context, email stri
 	s.logger.Info("Creating account")
 	tx, accountID, err := s.repo.CreateAccount(ctx, account)
 	if err != nil {
-		return s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		err = s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		return err
 	}
 	defer tx.Rollback()
-	profile := &profiles_service.CreateProfileRequest{
+	profile := Profile{
 		AccountID:        accountID,
 		Email:            email,
 		Username:         acc.Username,
-		RegistrationDate: timestamppb.New(account.RegistrationDate),
+		RegistrationDate: account.RegistrationDate,
 	}
-	_, err = s.profilesService.CreateProfile(ctx, profile)
+	err = s.profilesService.CreateProfile(ctx, profile)
 	if err != nil {
-		s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		err = s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		return err
 	}
 	tx.Commit()
 
-	//The error is not critical, the data will still be deleted from the cache.
+	// The error is not critical, the data will still be deleted from the cache.
 	if err = s.redisRepo.RegistrationCache.DeleteAccountFromCache(ctx, email); err != nil {
 		s.logger.Warning("can't delete account from registration cache: ", err.Error())
 	}
@@ -254,19 +282,22 @@ func (s *AccountService) SignIn(ctx context.Context,
 	s.logger.Info("Getting user by email")
 	account, err := s.repo.GetAccountByEmail(ctx, in.Email)
 	if err != nil {
-		return nil, s.errorHandler.createExtendedErrorResponce(ErrNotFound, err.Error(), "account not found")
+		err = s.errorHandler.createExtendedErrorResponce(ErrNotFound, err.Error(), "account not found")
+		return nil, err
 	}
 
 	s.logger.Info("Password and hash comparison")
 	if err = bcrypt.CompareHashAndPassword([]byte(account.Password), []byte(in.Password)); err != nil {
-		return nil, s.errorHandler.createExtendedErrorResponce(ErrInvalidArgument, err.Error(), "invalid login or password")
+		err = s.errorHandler.createExtendedErrorResponce(ErrInvalidArgument, err.Error(), "invalid login or password")
+		return nil, err
 	}
 
 	s.logger.Info("Caching session")
 	SessionID := uuid.NewString()
 	if err = s.redisRepo.SessionsCache.CacheSession(ctx, model.SessionCache{SessionID: SessionID,
 		AccountID: account.UUID, MachineID: MachineID, ClientIP: in.ClientIP, LastActivity: time.Now().In(time.UTC)}); err != nil {
-		return nil, s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		err = s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		return nil, err
 	}
 
 	return &accounts_service.AccessResponce{SessionID: SessionID}, nil
@@ -325,10 +356,10 @@ func (s *AccountService) Logout(ctx context.Context,
 		return nil, err
 	}
 
-	s.logger.Debug("Terminating session: ", SessionID)
 	err = s.redisRepo.SessionsCache.TerminateSessions(ctx, []string{SessionID}, cache.AccountID)
 	if err != nil {
-		return nil, s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		err = s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		return nil, err
 	}
 
 	return &emptypb.Empty{}, nil
@@ -343,22 +374,26 @@ func (s *AccountService) RequestChangePasswordToken(ctx context.Context,
 
 	exist, err := s.repo.IsAccountWithEmailExist(ctx, in.Email)
 	if err != nil {
-		return nil, s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		err = s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		return nil, err
 	}
 	if !exist {
-		return nil, s.errorHandler.createExtendedErrorResponce(ErrNotFound, "", "a account with this email address not exist")
+		err = s.errorHandler.createExtendedErrorResponce(ErrNotFound, "", "a account with this email address not exist")
+		return nil, err
 	}
 
 	token, err := jwt.GenerateToken(in.Email, s.cfg.JWT.ChangePasswordToken.Secret, s.cfg.JWT.ChangePasswordToken.TTL)
 	if err != nil {
-		return nil, s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		err = s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		return nil, err
 	}
 
 	URL := fmt.Sprintf("%s/%s", in.URL, token)
 	LinkTTL := s.cfg.JWT.ChangePasswordToken.TTL.Seconds()
 	body, err := json.Marshal(emailData{Email: in.Email, URL: URL, MailType: "account/forget-password", LinkTTL: LinkTTL})
 	if err != nil {
-		return nil, s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		err = s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		return nil, err
 	}
 
 	go func() {
@@ -382,42 +417,47 @@ func (s *AccountService) ChangePassword(ctx context.Context,
 	defer span.SetTag("grpc.status", grpc_errors.GetGrpcCode(err))
 
 	s.logger.Info("Validating incoming password")
-	vErr := validatePassword(in.ChangePasswordToken)
+	vErr := validatePassword(in.NewPassword)
 	if vErr != nil {
-		err = vErr
-		return nil, s.errorHandler.createExtendedErrorResponce(ErrInvalidArgument, vErr.DeveloperMessage, vErr.UserMessage)
+		err = s.errorHandler.createExtendedErrorResponce(ErrInvalidArgument, vErr.DeveloperMessage, vErr.UserMessage)
+		return nil, err
 	}
 
 	s.logger.Info("Parsing jwt token")
 	email, err := jwt.ParseToken(in.ChangePasswordToken, config.GetConfig().JWT.ChangePasswordToken.Secret)
 	if err != nil {
-		return nil, s.errorHandler.createErrorResponce(ErrInvalidArgument, err.Error())
+		err = s.errorHandler.createErrorResponce(ErrInvalidArgument, err.Error())
+		return nil, err
 	}
 
 	s.logger.Info("Checking account existing in DB")
 	exist, err := s.repo.IsAccountWithEmailExist(ctx, email)
 	if err != nil {
-		return nil, s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		err = s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		return nil, err
 	}
 	if !exist {
-		return nil, s.errorHandler.createExtendedErrorResponce(ErrNotFound, "", "account not found")
+		err = s.errorHandler.createExtendedErrorResponce(ErrNotFound, "", "account not found")
+		return nil, err
 	}
 
-	GeneratingHashSpan, _ := opentracing.StartSpanFromContext(ctx,
+	GeneratingHashSpan, ctx := opentracing.StartSpanFromContext(ctx,
 		"AccountService.ChangePassword.GenerateHash")
 
 	s.logger.Info("Generating hash for incoming password")
 	password_hash, err := bcrypt.GenerateFromPassword([]byte(in.NewPassword), config.GetConfig().Crypto.BcryptCost)
 	if err != nil {
 		GeneratingHashSpan.Finish()
-		return nil, s.errorHandler.createErrorResponce(ErrInternal, "can't generate hash.")
+		err = s.errorHandler.createErrorResponce(ErrInternal, "can't generate hash.")
+		return nil, err
 	}
 	GeneratingHashSpan.Finish()
 
 	s.logger.Info("Changing account password")
 	err = s.repo.ChangePassword(ctx, email, string(password_hash))
 	if err != nil {
-		return nil, s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		err = s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		return nil, err
 	}
 
 	return &emptypb.Empty{}, nil
@@ -436,11 +476,15 @@ func (s *AccountService) GetAllSessions(ctx context.Context,
 		return nil, err
 	}
 
-	s.logger.Info("Getting sessions for account ", cache.AccountID)
 	sessions, err := s.redisRepo.SessionsCache.GetSessionsForAccount(ctx, cache.AccountID)
-	if err != nil && err != redis.Nil {
+	if errors.Is(err, repository.ErrSessionNotFound) {
 		s.metrics.IncCacheMiss("GetAllSessions")
-		return nil, s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		err = s.errorHandler.createErrorResponce(ErrNotFound, err.Error())
+		return nil, err
+	}
+	if err != nil {
+		err = s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		return nil, err
 	}
 	s.metrics.IncCacheHits("GetAllSessions")
 
@@ -450,11 +494,11 @@ func (s *AccountService) GetAllSessions(ctx context.Context,
 		sessionsInfo[key] = &accounts_service.SessionInfo{
 			ClientIP:     session.ClientIP,
 			MachineID:    session.MachineID,
-			LastActivity: timestamppb.New(session.LastActivity),
+			LastActivity: timestamppb.New(session.LastActivity.UTC()),
 		}
 	}
-	s.logger.Info("Cache data successfully converted into responce, sending responce")
 
+	s.logger.Info("Cache data successfully converted into responce, sending responce")
 	return &accounts_service.AllSessionsResponce{Sessions: sessionsInfo}, nil
 }
 
@@ -473,7 +517,8 @@ func (s *AccountService) TerminateSessions(ctx context.Context,
 
 	s.logger.Info("Terminating sessions")
 	if err = s.redisRepo.SessionsCache.TerminateSessions(ctx, in.SessionsToTerminate, cache.AccountID); err != nil {
-		return nil, s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		err = s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		return nil, err
 	}
 
 	return &emptypb.Empty{}, nil
@@ -495,25 +540,36 @@ func (s *AccountService) DeleteAccount(ctx context.Context,
 
 	tx, err := s.repo.DeleteAccount(ctx, cache.AccountID)
 	if err != nil {
-		return nil, s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		err = s.errorHandler.createErrorResponce(ErrInternal, err.Error())
+		return nil, err
 	}
 	defer tx.Rollback()
-	_, err = s.profilesService.DeleteProfile(ctx, &profiles_service.DeleteProfileRequest{AccountID: cache.AccountID})
+	err = s.profilesService.DeleteProfile(ctx, cache.AccountID)
 	if err != nil {
 		return nil, err
 	}
 	tx.Commit()
 
+	go func() {
+		for i := int32(0); i < s.cfg.NumRetriesForTerminateSessions; i++ {
+			err = s.redisRepo.SessionsCache.TerminateAllSessions(context.Background(), cache.AccountID)
+			if err == nil {
+				return
+			}
+			time.Sleep(s.cfg.RetrySleepTimeForTerminateSessions)
+		}
+	}()
+
 	return &emptypb.Empty{}, nil
 }
 
-func (s *AccountService) checkSession(ctx context.Context) (cache model.SessionCache, SessionID, ClientIP string, err error) {
+func (s *AccountService) checkSession(ctx context.Context) (cache model.SessionCache, sessionID, clientIP string, err error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AccountService.checkSession")
 	defer span.Finish()
 	defer span.SetTag("grpc.status", grpc_errors.GetGrpcCode(err))
 
 	s.logger.Info("Getting session id from ctx")
-	SessionID, err = s.getSessionIDFromCtx(ctx)
+	sessionID, err = s.getSessionIDFromCtx(ctx)
 	if err != nil {
 		return
 	}
@@ -525,7 +581,7 @@ func (s *AccountService) checkSession(ctx context.Context) (cache model.SessionC
 	}
 
 	s.logger.Info("Getting session cache")
-	cache, err = s.redisRepo.SessionsCache.GetSessionCache(ctx, SessionID)
+	cache, err = s.redisRepo.SessionsCache.GetSessionCache(ctx, sessionID)
 	if errors.Is(err, repository.ErrSessionNotFound) {
 		s.metrics.IncCacheMiss("checkSession")
 		err = s.errorHandler.createErrorResponce(ErrSessisonNotFound, "")

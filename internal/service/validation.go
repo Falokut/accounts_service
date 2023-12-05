@@ -12,8 +12,8 @@ type validateError struct {
 	UserMessage      string
 }
 
-func newValidateError(DeveloperMessage, UserMessage string) *validateError {
-	return &validateError{DeveloperMessage: DeveloperMessage, UserMessage: UserMessage}
+func newValidateError(developerMessage, userMessage string) *validateError {
+	return &validateError{DeveloperMessage: developerMessage, UserMessage: userMessage}
 }
 func (e *validateError) Error() string {
 	err := errors.Join(errors.New(e.DeveloperMessage), errors.New(e.UserMessage))
@@ -45,8 +45,8 @@ func validateSignupInput(input *accounts_service.CreateAccountRequest) *validate
 	return nil
 }
 
-func validatePassword(Password string) *validateError {
-	passwordLengh := len(Password)
+func validatePassword(password string) *validateError {
+	passwordLengh := len(password)
 	if passwordLengh < 6 || passwordLengh > 32 {
 		return newValidateError("", "the password must be less than 32 symbols and more than 6")
 	}

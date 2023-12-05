@@ -10,6 +10,8 @@ import (
 )
 
 // AccountRepository provides methods to interact with user accounts in the database.
+//
+//go:generate mockgen -source=repository.go -destination=mocks/accountRepository.go
 type AccountRepository interface {
 	// CreateAccount creates a new account in the database.
 	CreateAccount(ctx context.Context, account model.Account) (*sql.Tx, string, error)
@@ -36,8 +38,10 @@ type CachedAccount struct {
 	Password string `json:"password"`
 }
 
-// RegistrationCacheRepository provides methods to interact with the registration cache.
-type RegistrationCacheRepository interface {
+// RegistrationCache provides methods to interact with the registration cache.
+//
+//go:generate mockgen -source=repository.go -destination=mocks/registrationCache.go
+type RegistrationCache interface {
 	// IsAccountInCache checks if the account associated with the given email is present in the cache.
 	// It returns true if the account is found in the cache, otherwise false.
 	// An error is returned if there is an issue while checking the cache.
@@ -62,8 +66,10 @@ var (
 	ErrSessionNotFound = errors.New("session not found")
 )
 
-// SessionsCacheRepository provides methods to interact with the sessions cache.
-type SessionsCacheRepository interface {
+// SessionsCache provides methods to interact with the sessions cache.
+//
+//go:generate mockgen -source=repository.go -destination=mocks/sessionsCache.go
+type SessionsCache interface {
 	// CacheSession caches the session data.
 	CacheSession(ctx context.Context, toCache model.SessionCache) error
 
@@ -84,17 +90,18 @@ type SessionsCacheRepository interface {
 
 	PingContext(ctx context.Context) error
 
+	TerminateAllSessions(ctx context.Context, accountID string) error
 	// Shutdown stops the cache operations.
 	Shutdown() error
 }
 
 type CacheRepo struct {
-	RegistrationCache RegistrationCacheRepository
-	SessionsCache     SessionsCacheRepository
+	RegistrationCache RegistrationCache
+	SessionsCache     SessionsCache
 }
 
-func NewCacheRepository(account RegistrationCacheRepository, SessionsCache SessionsCacheRepository) CacheRepo {
-	return CacheRepo{RegistrationCache: account, SessionsCache: SessionsCache}
+func NewCacheRepository(account RegistrationCache, sessionsCache SessionsCache) CacheRepo {
+	return CacheRepo{RegistrationCache: account, SessionsCache: sessionsCache}
 }
 
 type DBConfig struct {

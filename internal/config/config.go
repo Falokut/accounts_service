@@ -56,16 +56,18 @@ type Config struct {
 		ServerConfig metrics.MetricsServerConfig `yaml:"server_config"`
 	} `yaml:"prometheus"`
 
-	SessionsTTL  time.Duration       `yaml:"sessions_ttl"` // The lifetime of an inactive session in the cache
-	DBConfig     repository.DBConfig `yaml:"db_config"`
-	EmailKafka   KafkaConfig         `yaml:"email_kafka_config"`
-	JaegerConfig jaeger.Config       `yaml:"jaeger"`
+	NonActivatedAccountTTL time.Duration       `yaml:"nonactivated_account_ttl"`
+	SessionsTTL            time.Duration       `yaml:"sessions_ttl"` // The lifetime of an inactive session in the cache
+	DBConfig               repository.DBConfig `yaml:"db_config"`
+	EmailKafka             KafkaConfig         `yaml:"email_kafka_config"`
+	JaegerConfig           jaeger.Config       `yaml:"jaeger"`
 
-	RegistrationCacheOptions    redisOptions `yaml:"redis_registration_options"`
-	SessionCacheOptions         redisOptions `yaml:"session_cache_options"`
-	AccountSessionsCacheOptions redisOptions `yaml:"account_sessions_cache_options"`
-
-	Crypto struct {
+	RegistrationCacheOptions           redisOptions  `yaml:"redis_registration_options"`
+	SessionCacheOptions                redisOptions  `yaml:"session_cache_options"`
+	AccountSessionsCacheOptions        redisOptions  `yaml:"account_sessions_cache_options"`
+	NumRetriesForTerminateSessions     int32         `yaml:"num_retries_for_terminate_sessions"`
+	RetrySleepTimeForTerminateSessions time.Duration `yaml:"retry_sleep_time_for_terminate_sessions"`
+	Crypto                             struct {
 		BcryptCost int `yaml:"bcrypt_cost" enb:"BCRYPT_COST"`
 	} `yaml:"crypto"`
 	JWT struct {
@@ -92,6 +94,9 @@ func GetConfig() *Config {
 		if err := cleanenv.ReadConfig(configsPath+"secrets.env.yml", instance); err != nil {
 			help, _ := cleanenv.GetDescription(instance, nil)
 			logger.Fatal(help, " ", err)
+		}
+		if instance.NumRetriesForTerminateSessions <= 0 {
+			instance.NumRetriesForTerminateSessions = 1
 		}
 	})
 

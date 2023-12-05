@@ -37,3 +37,5 @@ swagger-doc-gen:
 
 .swagger:	swagger-clear	create-swagger-dir	swagger-doc-gen	
 .protoc:	protoc-clear	protoc-gen	gateway-gen	.swagger
+.run-tests:
+	go test ./...

@@ -32,9 +32,9 @@ func ParseToken(tokenstr string, secret string) (string, error) {
 	return claims.Value, nil
 }
 
-func GenerateToken(value string, secret string, TokenTTL time.Duration) (string, error) {
+func GenerateToken(value string, secret string, tokenTTL time.Duration) (string, error) {
 	registeredClaims := JWT.RegisteredClaims{
-		ExpiresAt: &JWT.NumericDate{Time: time.Now().Add(TokenTTL)},
+		ExpiresAt: &JWT.NumericDate{Time: time.Now().Add(tokenTTL)},
 		IssuedAt:  &JWT.NumericDate{Time: time.Now()}}
 
 	token := JWT.NewWithClaims(JWT.SigningMethodHS256, &Claims{registeredClaims, value})

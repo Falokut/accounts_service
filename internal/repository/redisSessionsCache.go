@@ -22,7 +22,7 @@ type redisSessionsCache struct {
 
 // NewSessionCache creates a new session cache using the provided Redis options, logger, and session TTL.
 // It initializes two Redis clients for session and account session caching, and verifies the connection to each Redis instance.
-func NewSessionCache(sessionCacheOpt *redis.Options, accountSessionsOpt *redis.Options, logger *logrus.Logger, SessionTTL time.Duration) (*redisSessionsCache, error) {
+func NewSessionCache(sessionCacheOpt *redis.Options, accountSessionsOpt *redis.Options, logger *logrus.Logger, sessionTTL time.Duration) (*redisSessionsCache, error) {
 	logger.Infoln("Creating session cache client")
 
 	// Initialize a Redis client for session caching
@@ -53,7 +53,7 @@ func NewSessionCache(sessionCacheOpt *redis.Options, accountSessionsOpt *redis.O
 	}
 
 	// Return the initialized redisSessionsCache with the configured Redis clients, logger, and session TTL
-	return &redisSessionsCache{sessions_rdb: sessions_rdb, account_sessions_rdb: account_sessions_rdb, logger: logger, SessionTTL: SessionTTL}, nil
+	return &redisSessionsCache{sessions_rdb: sessions_rdb, account_sessions_rdb: account_sessions_rdb, logger: logger, SessionTTL: sessionTTL}, nil
 }
 
 func (r *redisSessionsCache) PingContext(ctx context.Context) error {
@@ -77,6 +77,9 @@ func (r *redisSessionsCache) CacheSession(ctx context.Context, toCache model.Ses
 	span, ctx := opentracing.StartSpanFromContext(ctx, "SessionsCache.CacheSession")
 	defer span.Finish()
 
+	var err error
+	defer span.SetTag("has_errors", err != nil)
+
 	// Log a message indicating the marshalling of the data
 	r.logger.Info("Marshalling data")
 	// Marshal the session data into a JSON format
@@ -94,7 +97,7 @@ func (r *redisSessionsCache) CacheSession(ctx context.Context, toCache model.Ses
 	}
 
 	// Cache the account session data
-	if err := r.cacheAccountSession(ctx, toCache); err != nil {
+	if err = r.cacheAccountSession(ctx, toCache); err != nil {
 		// If an error occurs, delete the session data from the cache
 		r.sessions_rdb.Del(ctx, toCache.SessionID)
 		return err
@@ -107,6 +110,9 @@ func (r *redisSessionsCache) TerminateSessions(ctx context.Context, sessionsID [
 	// Create a new span for terminating sessions
 	span, ctx := opentracing.StartSpanFromContext(ctx, "SessionsCache.TerminateSessions")
 	defer span.Finish()
+
+	var err error
+	defer span.SetTag("has_errors", err != nil)
 
 	// Get the list of sessions associated with the specified account
 	sessions, err := r.GetSessionsList(ctx, accountID)
@@ -129,13 +135,10 @@ func (r *redisSessionsCache) TerminateSessions(ctx context.Context, sessionsID [
 		}
 	}
 
-	r.logger.Debugf("Account sessions: %v", sessions)
 	// Update the account's remaining sessions
-	if err := r.UpdateSessionsForAccount(ctx, AccountSessions{Sessions: sessions}, accountID); err != nil {
-		return err
-	}
+	err = r.UpdateSessionsForAccount(ctx, AccountSessions{Sessions: sessions}, accountID)
 
-	return nil
+	return err
 }
 
 func (r *redisSessionsCache) GetSessionsList(ctx context.Context, accountID string) ([]string, error) {
@@ -143,13 +146,16 @@ func (r *redisSessionsCache) GetSessionsList(ctx context.Context, accountID stri
 	span, ctx := opentracing.StartSpanFromContext(ctx, "SessionsCache.GetSessionsList")
 	defer span.Finish()
 
+	var err error
+	defer span.SetTag("has_errors", err != nil && !errors.Is(err, redis.Nil))
+
 	res, err := r.account_sessions_rdb.Get(ctx, accountID).Bytes()
-	if err == redis.Nil {
+	if errors.Is(err, redis.Nil) {
 		return []string{}, nil // No error, just an empty sessions map for the account
 	}
 
 	var sessions AccountSessions
-	if err := json.Unmarshal(res, &sessions); err != nil {
+	if err = json.Unmarshal(res, &sessions); err != nil {
 		return []string{}, err
 	}
 
@@ -164,6 +170,8 @@ func (r *redisSessionsCache) cacheAccountSession(ctx context.Context, toCache mo
 	span, ctx := opentracing.StartSpanFromContext(ctx, "SessionsCache.cacheAccountSession")
 	defer span.Finish()
 
+	var err error
+	defer span.SetTag("has_errors", err != nil)
 	// Attempt to retrieve the existing session data for the account from the Redis cache
 	body, err := r.account_sessions_rdb.Get(ctx, toCache.AccountID).Bytes()
 	if err != nil && err != redis.Nil {
@@ -176,7 +184,7 @@ func (r *redisSessionsCache) cacheAccountSession(ctx context.Context, toCache mo
 		// Log an informational message indicating unmarshaling of data
 		r.logger.Info("Unmarshal data")
 		// Unmarshal the retrieved data if it exists
-		if err := json.Unmarshal(body, &sessionsCache); err != nil {
+		if err = json.Unmarshal(body, &sessionsCache); err != nil {
 			return err
 		}
 	}
@@ -193,16 +201,21 @@ func (r *redisSessionsCache) GetSessionCache(ctx context.Context, sessionID stri
 	span, ctx := opentracing.StartSpanFromContext(ctx, "SessionsCache.GetSessionCache")
 	defer span.Finish()
 
+	var err error
+	defer span.SetTag("has_errors", err != nil)
+
 	// Retrieve the session data for the given session ID from the Redis cache
 	body, err := r.sessions_rdb.Get(ctx, sessionID).Bytes()
-	if err == redis.Nil {
+	if errors.Is(err, redis.Nil) {
 		return model.SessionCache{}, ErrSessionNotFound
+	} else if err != nil {
+		return model.SessionCache{}, err
 	}
 
 	// Unmarshal the retrieved cache data into a model.SessionCache struct
 	r.logger.Info("Unmarshal cache data")
 	var session model.SessionCache
-	if err := json.Unmarshal(body, &session); err != nil {
+	if err = json.Unmarshal(body, &session); err != nil {
 		return model.SessionCache{}, err
 	}
 
@@ -212,13 +225,14 @@ func (r *redisSessionsCache) GetSessionCache(ctx context.Context, sessionID stri
 // UpdateLastActivityForSession updates the last activity time for a cached session in the Redis cache.
 // It starts a new span for tracing, updates the LastActivity field of the cached session, and then caches the updated session.
 func (r *redisSessionsCache) UpdateLastActivityForSession(ctx context.Context,
-	cachedSession model.SessionCache, sessionID string, LastActivityTime time.Time) error {
+	cachedSession model.SessionCache, sessionID string, lastActivityTime time.Time) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "SessionsCache.UpdateLastActivityForSession")
 	defer span.Finish()
-
 	// Update the LastActivity field of the cached session with the provided LastActivityTime
-	cachedSession.LastActivity = LastActivityTime
-	return r.CacheSession(ctx, cachedSession)
+	cachedSession.LastActivity = lastActivityTime
+	err := r.CacheSession(ctx, cachedSession)
+	span.SetTag("has_errors", err != nil)
+	return err
 }
 
 type SessionInfo struct {
@@ -235,11 +249,13 @@ type AccountSessionsCacheModel struct {
 func (r *redisSessionsCache) GetSessionsForAccount(ctx context.Context, accountID string) (map[string]SessionInfo, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "SessionsCache.GetSessionsForAccount")
 	defer span.Finish()
+	var err error
+	defer span.SetTag("has_errors", err != nil && !errors.Is(err, redis.Nil))
 
 	// Retrieve the cached data for the specified accountID from the Redis database.
 	body, err := r.account_sessions_rdb.Get(ctx, accountID).Bytes()
-	if err == redis.Nil {
-		return map[string]SessionInfo{}, nil // No error, just an empty sessions map for the account
+	if errors.Is(err, redis.Nil) {
+		return map[string]SessionInfo{}, ErrSessionNotFound
 	}
 
 	var sessions AccountSessions
@@ -256,10 +272,10 @@ func (r *redisSessionsCache) GetSessionsForAccount(ctx context.Context, accountI
 
 	for i, sessionInfo := range sessionsInfo {
 		var cache model.SessionCache
-		err := json.Unmarshal([]byte(sessionInfo.(string)), &cache)
+		err = json.Unmarshal([]byte(sessionInfo.(string)), &cache)
 		if err != nil {
 			r.logger.Error(err)
-			continue
+			return map[string]SessionInfo{}, err
 		}
 
 		SessionsInfo.Sessions[sessions.Sessions[i]] = SessionInfo{
@@ -280,11 +296,13 @@ type AccountSessions struct {
 func (r *redisSessionsCache) UpdateSessionsForAccount(ctx context.Context, sessions AccountSessions, accountID string) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "SessionsCache.UpdateSessionsForAccount")
 	defer span.Finish()
+	var err error
+	defer span.SetTag("has_errors", err != nil && !errors.Is(err, redis.Nil))
 
 	// If the sessions map is empty, remove the corresponding entry from the Redis database.
 	if len(sessions.Sessions) == 0 {
 		err := r.account_sessions_rdb.Del(ctx, accountID).Err()
-		if err == redis.Nil {
+		if errors.Is(err, redis.Nil) {
 			return nil
 		}
 		return err
@@ -302,4 +320,30 @@ func (r *redisSessionsCache) UpdateSessionsForAccount(ctx context.Context, sessi
 	_, err = r.account_sessions_rdb.Set(ctx, accountID, serialized, r.SessionTTL).Result()
 
 	return err
+}
+
+func (r *redisSessionsCache) TerminateAllSessions(ctx context.Context, accountID string) error {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "SessionsCache.TerminateAllSessions")
+	defer span.Finish()
+	var err error
+	defer span.SetTag("has_errors", err != nil && !errors.Is(err, redis.Nil))
+
+	body, err := r.account_sessions_rdb.Get(ctx, accountID).Bytes()
+	if errors.Is(err, redis.Nil) {
+		return nil // No error, just an empty sessions map for the account
+	}
+
+	var sessions AccountSessions
+	if err = json.Unmarshal(body, &sessions); err != nil {
+		return err
+	}
+
+	if err = r.account_sessions_rdb.Del(ctx, sessions.Sessions...).Err(); err != nil {
+		return err
+	}
+	if err = r.sessions_rdb.Del(ctx, sessions.Sessions...).Err(); err != nil {
+		return err
+	}
+
+	return nil
 }

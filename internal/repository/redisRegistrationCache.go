@@ -50,8 +50,10 @@ func (r *redisRegistrationCache) Shutdown() error {
 
 // IsAccountInCache checks if the provided email account is present in the cache.
 func (r redisRegistrationCache) IsAccountInCache(ctx context.Context, email string) (bool, error) {
-	span, ctx := opentracing.StartSpanFromContext(ctx, "SessionsCache.UpdateSessionsForAccount")
+	span, ctx := opentracing.StartSpanFromContext(ctx, "SessionsCache.IsAccountInCache")
 	defer span.Finish()
+	var err error
+	defer span.SetTag("has_errors",err != nil)
 
 	num, err := r.rdb.Exists(ctx, email).Result()
 	if err != nil {
@@ -64,12 +66,13 @@ func (r redisRegistrationCache) IsAccountInCache(ctx context.Context, email stri
 // CacheAccount caches the provided account information with the specified email in the Redis cache.
 // It marshals the account data into JSON and sets it in the cache with the specified TTL.
 func (r *redisRegistrationCache) CacheAccount(ctx context.Context,
-	email string, account CachedAccount, NonActivatedAccountTTL time.Duration) error {
+	email string, account CachedAccount, nonActivatedAccountTTL time.Duration) error {
 	// Start a new span for caching the account information
 	span, ctx := opentracing.StartSpanFromContext(ctx, "RegistrationCache.CacheAccount")
 	defer span.Finish()
+	var err error
+	defer span.SetTag("has_errors",err != nil)
 
-	// Log the marshalling of data
 	r.logger.Info("Marshalling data")
 	serialized, err := json.Marshal(&account)
 	if err != nil {
@@ -77,7 +80,7 @@ func (r *redisRegistrationCache) CacheAccount(ctx context.Context,
 	}
 
 	// Set the serialized account data in the Redis cache with the specified TTL
-	_, err = r.rdb.Set(ctx, email, serialized, NonActivatedAccountTTL).Result()
+	_, err = r.rdb.Set(ctx, email, serialized, nonActivatedAccountTTL).Result()
 	if err != nil {
 		return fmt.Errorf("can't cache account %s", err.Error())
 	}
@@ -92,8 +95,9 @@ func (r redisRegistrationCache) GetCachedAccount(ctx context.Context, email stri
 	span, ctx := opentracing.StartSpanFromContext(ctx, "RegistrationCache.GetCachedAccount")
 	defer span.Finish()
 
-	// Log the retrieval of account with the specified email
-	r.logger.Debugf("Getting account with %s email", email)
+	var err error
+	defer span.SetTag("has_errors",err != nil)
+
 	body, err := r.rdb.Get(ctx, email).Bytes()
 	if err != nil {
 		return CachedAccount{}, err
@@ -112,6 +116,8 @@ func (r *redisRegistrationCache) DeleteAccountFromCache(ctx context.Context, ema
 	span, ctx := opentracing.StartSpanFromContext(ctx, "RegistrationCache.DeleteAccountFromCache")
 	defer span.Finish()
 
+	err := r.rdb.Del(ctx, email).Err()
+	span.SetTag("has_errors",err != nil)
 	// Delete the account information from the Redis cache
-	return r.rdb.Del(ctx, email).Err()
+	return err
 }

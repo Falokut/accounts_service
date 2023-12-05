@@ -761,7 +761,8 @@
         },
         "last_activity": {
           "type": "string",
-          "format": "date-time"
+          "format": "date-time",
+          "title": "last activity time in UTC"
         }
       }
     },
@@ -772,9 +773,6 @@
           "type": "string"
         },
         "password": {
-          "type": "string"
-        },
-        "session_info": {
           "type": "string"
         },
         "client_ip": {
