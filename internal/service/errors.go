@@ -6,6 +6,8 @@ import (
 
 	accounts_service "github.com/Falokut/accounts_service/pkg/accounts_service/v1/protos"
 	"github.com/Falokut/grpc_errors"
+	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
@@ -53,6 +55,16 @@ func newErrorHandler(logger *logrus.Logger) errorHandler {
 	}
 }
 
+func (e *errorHandler) createErrorResponceWithSpan(span opentracing.Span, err error, developerMessage string) error {
+	if err == nil {
+		return nil
+	}
+
+	span.SetTag("grpc.status", grpc_errors.GetGrpcCode(err))
+	span.SetTag("error", true)
+	return e.createErrorResponce(err, developerMessage)
+}
+
 func (e *errorHandler) createErrorResponce(err error, developerMessage string) error {
 	var msg string
 	if len(developerMessage) == 0 {
@@ -64,6 +76,17 @@ func (e *errorHandler) createErrorResponce(err error, developerMessage string) e
 	err = status.Error(grpc_errors.GetGrpcCode(err), msg)
 	e.logger.Error(err)
 	return err
+}
+
+func (e *errorHandler) createExtendedErrorResponceWithSpan(span opentracing.Span,
+	err error, developerMessage, userMessage string) error {
+	if err == nil {
+		return nil
+	}
+
+	span.SetTag("grpc.status", grpc_errors.GetGrpcCode(err))
+	span.SetTag("error", true)
+	return e.createExtendedErrorResponce(err, developerMessage, userMessage)
 }
 
 func (e *errorHandler) createExtendedErrorResponce(err error, developerMessage, userMessage string) error {

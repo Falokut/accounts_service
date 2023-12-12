@@ -44,10 +44,9 @@ func (s *profilesService) CreateProfile(ctx context.Context, profile Profile) er
 func (s *profilesService) DeleteProfile(ctx context.Context, accountID string) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "profilesService.DeleteProfile")
 	defer span.Finish()
-	var err error
-	defer span.SetTag("grpc.status", grpc_errors.GetGrpcCode(err))
 
-	_, err = s.service.DeleteProfile(ctx, &profiles_service.DeleteProfileRequest{AccountID: accountID})
+	_, err := s.service.DeleteProfile(ctx, &profiles_service.DeleteProfileRequest{AccountID: accountID})
+	span.SetTag("grpc.status", grpc_errors.GetGrpcCode(err))
 	return err
 }
 

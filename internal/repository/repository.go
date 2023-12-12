@@ -9,6 +9,8 @@ import (
 	"github.com/Falokut/accounts_service/internal/model"
 )
 
+
+
 // AccountRepository provides methods to interact with user accounts in the database.
 //
 //go:generate mockgen -source=repository.go -destination=mocks/accountRepository.go

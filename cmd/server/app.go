@@ -86,7 +86,7 @@ func main() {
 	redisRepo := repository.NewCacheRepository(registrationCache, sessionsCache)
 
 	logger.Info("Repository initializing")
-	repo := repository.NewAccountRepository(database)
+	repo := repository.NewAccountsRepository(database)
 
 	kafkaWriter := getKafkaWriter(appCfg.EmailKafka)
 	defer kafkaWriter.Close()
@@ -101,8 +101,8 @@ func main() {
 		}
 	}()
 	logger.Info("Healthcheck initialized")
-	
-	profilesService,err:=service.NewProfilesService(appCfg.ProfilesServiceAddr)
+
+	profilesService, err := service.NewProfilesService(appCfg.ProfilesServiceAddr)
 	if err != nil {
 		logger.Fatalf("Shutting down, connection to the profiles service is not established: %s", err.Error())
 	}
