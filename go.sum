@@ -8,10 +8,14 @@ github.com/Falokut/grpc_errors v1.0.0 h1:S07x3O6g2KWP7Kw82IpmJYPdH1kq38ih4NOBJ29
 github.com/Falokut/grpc_errors v1.0.0/go.mod h1:y/tt/Zlpux2xCjqUtoqrMY1OeYxTKNUc+An0rIZiHwk=
 github.com/Falokut/grpc_rest_server v1.0.1 h1:NGbYqx3Ja6+zoNJZpFlNnyjg1a11TEFEIXY4o02kCa4=
 github.com/Falokut/grpc_rest_server v1.0.1/go.mod h1:WLFSp/LFAZPgGMkM9jNWbmG+U09z4+qRhsFKcsyXVkI=
+github.com/Falokut/grpc_rest_server v1.0.3 h1:46lJ8Sddrzq6xyivOsfBSfO2MwccJdZOKLKaKdxmJhA=
+github.com/Falokut/grpc_rest_server v1.0.3/go.mod h1:sz3oLFL2hxQdF/h24/GTRDNzrRIXq/P7q+Vp+s0HvCQ=
 github.com/Falokut/healthcheck v0.0.0-20231124155013-bff54f9bc002 h1:lnv8v7IvCnKxRbrWjINHOWHpZPpFDSqv0QFi8v1UM4E=
 github.com/Falokut/healthcheck v0.0.0-20231124155013-bff54f9bc002/go.mod h1:S4mxGDEYOzK4c5KgTs2tCSNovzu7lLaNSIPG4lX3a1w=
 github.com/Falokut/interceptors v1.0.1 h1:+GN6j5V2AxtCgFNmH3eU01IMSryglRXWYD8ZqB7Gjo4=
 github.com/Falokut/interceptors v1.0.1/go.mod h1:WpvEtPuO+KDCpwJNb58zOA8zJp42W4JiqLESaHQ07SU=
+github.com/Falokut/interceptors v1.0.3 h1:lRPEFpyF90tsIBVhYowAG90cUy8X04ODlSgokaQkSLI=
+github.com/Falokut/interceptors v1.0.3/go.mod h1:TWflfMzIINRNvfp61dkznvzXwdrV1pxkHzybVZK/cgw=
 github.com/Falokut/online_cinema_ticket_office.loggerwrapper v0.0.0-20231130151717-09aa21496f83 h1:tqDIrLbp2lhDNev8zlWxY0X4rAZQeyUnLL6wcJ3CBP8=
 github.com/Falokut/online_cinema_ticket_office.loggerwrapper v0.0.0-20231130151717-09aa21496f83/go.mod h1:KBQXfAaJe51Oc6J1Uu+3Z8sIm1POZ6qQWAzc1/ioA9c=
 github.com/HdrHistogram/hdrhistogram-go v1.1.2 h1:5IcZpTvzydCQeHzK4Ef/D5rrSqwxob0t8PQPMybUNFM=

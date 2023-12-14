@@ -34,13 +34,13 @@ require github.com/matttproud/golang_protobuf_extensions/v2 v2.0.0 // indirect
 
 require (
 	github.com/Falokut/grpc_errors v1.0.0
-	github.com/Falokut/interceptors v1.0.1 // indirect
+	github.com/Falokut/interceptors v1.0.3 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 )
 
 require (
 	github.com/BurntSushi/toml v1.2.1 // indirect
-	github.com/Falokut/grpc_rest_server v1.0.1
+	github.com/Falokut/grpc_rest_server v1.0.3
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
