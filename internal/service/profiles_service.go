@@ -9,6 +9,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -46,7 +47,7 @@ func (s *profilesService) DeleteProfile(ctx context.Context, accountID string) e
 	defer span.Finish()
 
 	_, err := s.service.DeleteProfile(ctx, &profiles_service.DeleteProfileRequest{AccountID: accountID})
-	span.SetTag("grpc.status", grpc_errors.GetGrpcCode(err))
+	span.SetTag("grpc.status", status.Code(err))
 	return err
 }
 

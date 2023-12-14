@@ -7,7 +7,7 @@ import (
 	accounts_service "github.com/Falokut/accounts_service/pkg/accounts_service/v1/protos"
 	"github.com/Falokut/grpc_errors"
 	"github.com/opentracing/opentracing-go"
-	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/ext"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
@@ -61,7 +61,7 @@ func (e *errorHandler) createErrorResponceWithSpan(span opentracing.Span, err er
 	}
 
 	span.SetTag("grpc.status", grpc_errors.GetGrpcCode(err))
-	span.SetTag("error", true)
+	ext.LogError(span, err)
 	return e.createErrorResponce(err, developerMessage)
 }
 
@@ -85,16 +85,16 @@ func (e *errorHandler) createExtendedErrorResponceWithSpan(span opentracing.Span
 	}
 
 	span.SetTag("grpc.status", grpc_errors.GetGrpcCode(err))
-	span.SetTag("error", true)
+	ext.LogError(span, err)
 	return e.createExtendedErrorResponce(err, developerMessage, userMessage)
 }
 
 func (e *errorHandler) createExtendedErrorResponce(err error, developerMessage, userMessage string) error {
 	var msg string
-	if developerMessage == "" {
-		msg = err.Error()
-	} else {
+	if developerMessage != "" {
 		msg = fmt.Sprintf("%s. error: %v", developerMessage, err)
+	} else {
+		msg = err.Error()
 	}
 
 	extErr := status.New(grpc_errors.GetGrpcCode(err), msg)

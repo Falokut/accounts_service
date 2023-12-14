@@ -14,9 +14,9 @@ import (
 	accounts_service "github.com/Falokut/accounts_service/pkg/accounts_service/v1/protos"
 	"github.com/Falokut/accounts_service/pkg/jwt"
 	"github.com/Falokut/accounts_service/pkg/metrics"
-	"github.com/Falokut/grpc_errors"
 	"github.com/google/uuid"
 	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/ext"
 	"github.com/redis/go-redis/v9"
 	"github.com/segmentio/kafka-go"
 	"github.com/sirupsen/logrus"
@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -192,8 +193,7 @@ func (s *AccountService) VerifyAccount(ctx context.Context,
 	s.logger.Info("Parsing token")
 	email, err := jwt.ParseToken(in.VerificationToken, config.GetConfig().JWT.VerifyAccountToken.Secret)
 	if err != nil {
-		err = s.errorHandler.createErrorResponceWithSpan(span, ErrInvalidArgument, err.Error())
-		return nil, err
+		return nil, s.errorHandler.createErrorResponceWithSpan(span, ErrInvalidArgument, err.Error())
 	}
 
 	if err = s.createAccountAndProfile(ctx, email); err != nil {
@@ -268,7 +268,7 @@ func (s *AccountService) SignIn(ctx context.Context,
 		return nil, s.errorHandler.createErrorResponceWithSpan(span, err, "")
 	}
 
-	s.logger.Info("Getting user by email")
+	s.logger.Info("Getting account by email")
 	account, err := s.repo.GetAccountByEmail(ctx, in.Email)
 	if err != nil {
 		return nil, s.errorHandler.createExtendedErrorResponceWithSpan(span, ErrNotFound, err.Error(), "account not found")
@@ -308,7 +308,8 @@ func (s *AccountService) GetAccountID(ctx context.Context,
 	s.logger.Info("Checking session")
 	cache, SessionID, _, err := s.checkSession(ctx)
 	if err != nil {
-		span.SetTag("grpc.status", grpc_errors.GetGrpcCode(err))
+		span.SetTag("grpc.status", status.Code(err))
+		ext.LogError(span, err)
 		return nil, err
 	}
 
@@ -321,9 +322,11 @@ func (s *AccountService) GetAccountID(ctx context.Context,
 		err := s.redisRepo.SessionsCache.UpdateLastActivityForSession(ctx, cache, SessionID, time.Now().In(time.UTC))
 		if err != nil {
 			s.logger.Warning("Session last activity not updated, error: ", err.Error())
+			span.SetTag("grpc.status", status.Code(err))
+			ext.LogError(span, err)
+		} else {
+			span.SetTag("grpc.status", codes.OK)
 		}
-
-		span.SetTag("grpc.status", grpc_errors.GetGrpcCode(err))
 	}()
 
 	header := metadata.Pairs(AccountIdContext, cache.AccountID)
@@ -340,7 +343,8 @@ func (s *AccountService) Logout(ctx context.Context,
 	s.logger.Info("Checking session")
 	cache, SessionID, _, err := s.checkSession(ctx)
 	if err != nil {
-		span.SetTag("grpc.status", grpc_errors.GetGrpcCode(err))
+		span.SetTag("grpc.status", status.Code(err))
+		ext.LogError(span, err)
 		return nil, err
 	}
 
@@ -452,7 +456,8 @@ func (s *AccountService) GetAllSessions(ctx context.Context,
 	s.logger.Info("Checking session")
 	cache, _, _, err := s.checkSession(ctx)
 	if err != nil {
-		span.SetTag("grpc.status", grpc_errors.GetGrpcCode(err))
+		span.SetTag("grpc.status", status.Code(err))
+		ext.LogError(span, err)
 		return nil, err
 	}
 
@@ -488,7 +493,8 @@ func (s *AccountService) TerminateSessions(ctx context.Context,
 	s.logger.Info("Checking session")
 	cache, _, _, err := s.checkSession(ctx)
 	if err != nil {
-		span.SetTag("grpc.status", grpc_errors.GetGrpcCode(err))
+		span.SetTag("grpc.status", status.Code(err))
+		ext.LogError(span, err)
 		return nil, err
 	}
 
@@ -509,7 +515,8 @@ func (s *AccountService) DeleteAccount(ctx context.Context,
 
 	cache, _, _, err := s.checkSession(ctx)
 	if err != nil {
-		span.SetTag("grpc.status", grpc_errors.GetGrpcCode(err))
+		span.SetTag("grpc.status", status.Code(err))
+		ext.LogError(span, err)
 		return nil, err
 	}
 
@@ -543,17 +550,20 @@ func (s *AccountService) checkSession(ctx context.Context) (cache model.SessionC
 	sessionID, clientIP string, err error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "AccountService.checkSession")
 	defer span.Finish()
-	defer span.SetTag("grpc.status", grpc_errors.GetGrpcCode(err))
 
 	s.logger.Info("Getting session id from ctx")
 	sessionID, err = s.getSessionIDFromCtx(ctx)
 	if err != nil {
+		span.SetTag("grpc.status", status.Code(err))
+		ext.LogError(span, err)
 		return
 	}
 
 	s.logger.Info("Getting client ip from ctx")
 	MachineID, err := s.getMachineIDFromCtx(ctx)
 	if err != nil {
+		span.SetTag("grpc.status", status.Code(err))
+		ext.LogError(span, err)
 		return
 	}
 
@@ -562,9 +572,13 @@ func (s *AccountService) checkSession(ctx context.Context) (cache model.SessionC
 	if errors.Is(err, repository.ErrSessionNotFound) {
 		s.metrics.IncCacheMiss("checkSession")
 		err = s.errorHandler.createErrorResponceWithSpan(span, ErrSessisonNotFound, "")
+		span.SetTag("grpc.status", status.Code(err))
+		ext.LogError(span, err)
 		return
 	} else if err != nil {
 		err = s.errorHandler.createErrorResponceWithSpan(span, ErrInternal, err.Error())
+		span.SetTag("grpc.status", status.Code(err))
+		ext.LogError(span, err)
 		return
 	}
 
