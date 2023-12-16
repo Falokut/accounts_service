@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	profiles_service "github.com/Falokut/accounts_service/pkg/profiles_service/v1/protos"
+	profiles_service "github.com/Falokut/profiles_service/pkg/profiles_service/v1/protos"
 	"github.com/Falokut/grpc_errors"
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/opentracing/opentracing-go"

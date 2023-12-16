@@ -152,7 +152,7 @@ if supported values is empty, then any type values are supported
 |host|METRIC_HOST|string|ip address or host to listen for prometheus service||
 | port|METRIC_PORT|string|port to listen for  of prometheus service| any valid port that is not occupied by other services. The string should not contain delimiters, only the port number|
 
-### time.Duration yml supported values
+### time.Duration yaml supported values
 A Duration value can be expressed in various formats, such as in seconds, minutes, hours, or even in nanoseconds. Here are some examples of valid Duration values:
 - 5s represents a duration of 5 seconds.
 - 1m30s represents a duration of 1 minute and 30 seconds.
@@ -165,7 +165,7 @@ A Duration value can be expressed in various formats, such as in seconds, minute
 |yml name| env name|param type| description | supported values |
 |-|-|-|-|-|
 |network | |string| network| tcp or udp|
-|addr||string|hip address(or host) with port of redis| all valid addresses formatted like host:port or ip-address:port |
+|addr||string|ip address(or host) with port of redis| all valid addresses formatted like host:port or ip-address:port |
 |password|REDIS_PASSWORD|string|password for connection to the redis||
 |db||int|the number of the database in the redis||
 
