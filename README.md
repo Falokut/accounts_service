@@ -5,6 +5,14 @@
     + [Accounts and authentication](#accounts-and-authentication)
     + [Registration](#registration)
 + [Configuration](#configuration)
+    +[Params info](#configuration-params-info)
+        +[Database config](#database-config)
+        +[Kafka config](#kafka-config)
+        +[Jaeger config](#jaeger-config)
+        +[Prometheus config](#prometheus-config)
+        +[time.Duration](#timeduration-yml-supported-values)
+        +[Redis config](#redis-config)
+        +[JWT token config](#jwt-token-config)
 + [Metrics](#metrics)
 + [Docs](#docs)
 + [Author](#author)
@@ -54,7 +62,7 @@ REDIS_PASSWORD=redispass
 REDIS_AOF_ENABLED=no
 ```
 2. [Configure accounts_db](accounts_db/README.md#Configuration)
-3. Create secrets.env.yml inside docker/containers-configs/app-configs  
+3. Create secrets.env.yml inside docker/containers-configs/  
 Example config for service:
 ``` yaml
 
@@ -84,8 +92,91 @@ account_sessions_cache_options:
 ``` 
 4. Configure kafka broker [example compose file](kafka-cluster.yml)
 
+## Configuration params info
+if supported values is empty, then any type values are supported
+
+| yml name | yml section | env name | param type| description | supported values |
+|-|-|-|-|-|-|
+| log_level   || LOG_LEVEL  |   string   |      logging level        | panic, fatal, error, warning, warn, info, debug, trace|
+| profiles_service_addr   |      | PROFILES_SERVICE_ADDR  |    string       | ip address(or host) with port of profiles service            | all valid addresses formatted like host:port or ip-address:port |
+| healthcheck_port   |      | HEALTHCHECK_PORT  |   string   |     port for healthcheck       | any valid port that is not occupied by other services. The string should not contain delimiters, only the port number|
+| host   |  listen    | HOST  |   string   |  ip address or host to listen   |  |
+| port   |  listen    | PORT  |   string   |  port to listen   | The string should not contain delimiters, only the port number |
+| server_mode   |  listen    | SERVER_MODE  |   string   | Server listen mode, Rest API, gRPC or both | GRPC, REST, BOTH|
+| allowed_headers   |  listen    |  |   []string, array of strings   | list of all allowed custom headers. Need for REST API gateway, list of metadata headers, hat are passed through the gateway into the service | any strings list|
+| allowed_outgoing_header   |  listen    |  |   map[string]string  | map of headers, thath passess throught gateway from service (outgoing headers), which key is pretty header name, value is header name inside service | any map with string key and value string |
+| service_name   |  prometheus    | PROMETHEUS_SERVICE_NAME | string |  service name, thats will show in prometheus  ||
+| server_config   |  prometheus    |   | nested yml configuration  [metrics server config](#prometheus-config) | |
+| nonactivated_account_ttl   |      |   | time.Duration with positive duration | the time that registered(non activated) account will be stored in the cache |[supported values](#time.Duration-yaml-supported-values)  |
+| sessions_ttl   |      |   | time.Duration with positive duration | the time that session will be stored in the cache |[supported values](#time.Duration-yaml-supported-values)  |
+|db_config|||nested yml configuration  [database config](#database-config) || configuration for database connection | |
+|email_kafka_config|||  nested yml configuration  [kafka config](#kafka-config)||configuration for kafka connection | |
+|jaeger|||nested yml configuration  [jaeger config](#jaeger-config)|configuration for jaeger connection | |
+|redis_registration_options|||nested yml configuration  [redis config](#redis-config)|configuration for redis connection for redistration cache||
+|session_cache_options |||nested yml configuration  [redis config](#redis-config)  | configuration for redis connection for sessions cache | |
+|account_sessions_cache_options|||  nested yml configuration  [redis config](#redis-config)| configuration for redis connection for account sessions cache | |
+|num_retries_for_terminate_sessions|||int|number of retries for session termination, when deleting account||
+|retry_sleep_time_for_terminate_sessions||| time.Duration with positive duration | the time delay between session deletion retries|[supported values](#time.Duration-yaml-supported-values)|
+|bcrypt_cost|crypto|BCRYPT_COST| int |the bcrypt hashing complexity|4-31|
+|change_password_token|JWT||nested yml configuration [jwt config](#jwt-token-config)| configuration for jwt-token for change password||
+|verify_account_token|JWT||nested yml configuration [jwt config](#jwt-token-config)| configuration for jwt-token for account verification(activation)||
+
+
+### Database config
+|yml name| env name|param type| description | supported values |
+|-|-|-|-|-|
+|host|DB_HOST|string|host or ip address of database| |
+|port|DB_PORT|string|port of database| any valid port that is not occupied by other services. The string should not contain delimiters, only the port number|
+|username|DB_USERNAME|string|username(role) in database||
+|password|DB_PASSWORD|string|password for role in database||
+|db_name|DB_NAME|string|database name (database instance)||
+|ssl_mode|DB_SSL_MODE|string|enable or disable ssl mode for database connection|disabled or enabled|
+
+### Kafka config
+|yml name| env name|param type| description | supported values |
+|-|-|-|-|-|
+|brokers | |[]string, array of strings| list of the addresses of kafka brokers| any list of addresses like host:port or ip-address:port|
+|topic||string| topic name| any topic name|
+
+### Jaeger config
+
+|yml name| env name|param type| description | supported values |
+|-|-|-|-|-|
+|address|JAEGER_ADDRESS|string|hip address(or host) with port of jaeger service| all valid addresses formatted like host:port or ip-address:port |
+|service_name|JAEGER_SERVICE_NAME|string|service name, thats will show in jaeger in traces||
+|log_spans|JAEGER_LOG_SPANS|bool|whether to enable log scans in jaeger for this service or not||
+
+### Prometheus config
+|yml name| env name|param type| description | supported values |
+|-|-|-|-|-|
+|host|METRIC_HOST|string|ip address or host to listen for prometheus service||
+| port|METRIC_PORT|string|port to listen for  of prometheus service| any valid port that is not occupied by other services. The string should not contain delimiters, only the port number|
+
+### time.Duration yml supported values
+A Duration value can be expressed in various formats, such as in seconds, minutes, hours, or even in nanoseconds. Here are some examples of valid Duration values:
+- 5s represents a duration of 5 seconds.
+- 1m30s represents a duration of 1 minute and 30 seconds.
+- 2h represents a duration of 2 hours.
+- 500ms represents a duration of 500 milliseconds.
+- 100µs represents a duration of 100 microseconds.
+- 10ns represents a duration of 10 nanoseconds.
+
+### Redis config
+|yml name| env name|param type| description | supported values |
+|-|-|-|-|-|
+|network | |string| network| tcp or udp|
+|addr||string|hip address(or host) with port of redis| all valid addresses formatted like host:port or ip-address:port |
+|password|REDIS_PASSWORD|string|password for connection to the redis||
+|db||int|the number of the database in the redis||
+
+### JWT token config
+|yml name| env name|param type| description | supported values |
+|-|-|-|-|-|
+|secret||string|the secret to generating a jwt token||
+|TTL||time.Duration with positive duration| the amount of time this token will be valid for|[supported values](#time.Duration-yaml-supported-values)|
+
 # Metrics
-The service uses Prometheus and Jaeger and supports distribution tracing
+The service uses Prometheus and Jaeger and supports distributed tracing
 
 # Docs
 [Swagger docs](swagger/docs/accounts_service_v1.swagger.json)

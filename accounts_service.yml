@@ -14,7 +14,7 @@ services:
     build: ./
     command: ./bin/app
     volumes:
-      - ./docker/containers-configs/app-configs/:/configs
+      - ./docker/containers-configs/:/configs
     #  ports:
     #    - 8080
     networks:
