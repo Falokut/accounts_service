@@ -106,6 +106,7 @@ func main() {
 	if err != nil {
 		logger.Fatalf("Shutting down, connection to the profiles service is not established: %s", err.Error())
 	}
+	defer profilesService.Shutdown()
 
 	logger.Info("Service initializing")
 	service := service.NewAccountService(repo,

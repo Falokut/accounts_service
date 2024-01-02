@@ -10,7 +10,7 @@
         + [Kafka config](#kafka-config)
         + [Jaeger config](#jaeger-config)
         + [Prometheus config](#prometheus-config)
-        + [time.Duration](#timeduration-yml-supported-values)
+        + [time.Duration](#timeduration-yaml-supported-values)
         + [Redis config](#redis-config)
         + [JWT token config](#jwt-token-config)
 + [Metrics](#metrics)
@@ -62,7 +62,7 @@ REDIS_PASSWORD=redispass
 REDIS_AOF_ENABLED=no
 ```
 2. [Configure accounts_db](accounts_db/README.md#Configuration)
-3. Create secrets.env.yml inside docker/containers-configs/  
+3. Create secrets.env.yml inside docker/containers-configs/
 Example config for service:
 ``` yaml
 
@@ -90,7 +90,9 @@ session_cache_options:
 account_sessions_cache_options:
   password: "redispass" # Here is your password for redis with account sessions cache db 
 ``` 
-4. Configure kafka broker [example compose file](kafka-cluster.yml)
+4. Create a configuration file or change the config.yml file in docker\containers-configs.
+If you are creating a new configuration file, specify the path to it in docker-compose volume section (your-path/config.yml:configs/)
+5. Configure kafka broker [example compose file](kafka-cluster.yml)
 
 ## Configuration params info
 if supported values is empty, then any type values are supported

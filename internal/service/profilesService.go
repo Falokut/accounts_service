@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 
-	profiles_service "github.com/Falokut/profiles_service/pkg/profiles_service/v1/protos"
 	"github.com/Falokut/grpc_errors"
+	profiles_service "github.com/Falokut/profiles_service/pkg/profiles_service/v1/protos"
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/opentracing/opentracing-go"
 	"google.golang.org/grpc"
@@ -15,6 +15,7 @@ import (
 
 type profilesService struct {
 	service profiles_service.ProfilesServiceV1Client
+	conn    *grpc.ClientConn
 }
 
 func NewProfilesService(serviceAddr string) (*profilesService, error) {
@@ -25,8 +26,14 @@ func NewProfilesService(serviceAddr string) (*profilesService, error) {
 	service := profiles_service.NewProfilesServiceV1Client(cc)
 	return &profilesService{
 		service: service,
+		conn:    cc,
 	}, nil
 }
+
+func (s *profilesService) Shutdown() error {
+	return s.conn.Close()
+}
+
 func (s *profilesService) CreateProfile(ctx context.Context, profile Profile) error {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "profilesService.CreateProfile")
 	defer span.Finish()
