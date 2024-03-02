@@ -1,4 +1,4 @@
-FROM golang:alpine AS builder
+FROM golang:1.22-alpine AS builder
 
 WORKDIR /app
 
@@ -7,8 +7,7 @@ COPY  ./ ./
 
 RUN go clean --modcache && go build -ldflags "-w" -mod=readonly -o /bin cmd/server/app.go
 
-FROM alpine
-RUN apk update && apk add wget
+FROM scratch
 
 WORKDIR /
 COPY --from=builder  /bin /bin

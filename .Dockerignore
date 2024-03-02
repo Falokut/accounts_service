@@ -7,4 +7,4 @@ Makefile
 *.md
 *.txt
 *.proto
-**/accounts_db/
+userlist.txt

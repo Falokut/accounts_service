@@ -11,23 +11,22 @@ networks:
 
 services:
   accounts_service:
-    build: ./
+    build:
+      dockerfile: ./alpine.Dockerfile
     command: ./bin/app
     volumes:
       - ./docker/containers-configs/:/configs
-    #  ports:
-    #    - 8080
+    ports:
+      - 9080:8080
     networks:
       - accounts_service_network
       - kafka_network
       - accounts_db_network
-      - tracing_network
-      - gateway_network
     depends_on:
       redis:
         condition: service_healthy
-      accounts_db:
-        condition: service_healthy
+      accounts_pool:
+        condition: service_started
       kafka:
         condition: service_healthy
     healthcheck:
@@ -36,9 +35,17 @@ services:
       timeout: 20s
       retries: 3
       start_period: 20s
+    environment:
+      BCRYPT_COST: ${BCRYPT_COST}
+      REGISTRATION_REPOSITORY_PASSWORD: ${REDIS_PASSWORD}
+      SESSIONS_REPOSITORY_PASSWORD: ${REDIS_PASSWORD}
+      DB_PASSWORD: ${DB_PASSWORD}
+      CHANGE_PASSWORD_TOKEN_SECRET: ${CHANGE_PASSWORD_TOKEN_SECRET}
+      VERIFY_ACCOUNT_TOKEN_SECRET: ${VERIFY_ACCOUNT_TOKEN_SECRET}
+      CHANGE_EMAIL_TOKEN_SECRET: ${CHANGE_EMAIL_TOKEN_SECRET}
     deploy:
       mode: replicated
-      replicas: 3
+      replicas: 1
       endpoint_mode: dnsrr
       restart_policy:
         condition: unless-stopped
@@ -47,7 +54,7 @@ services:
       org.label-schema.group: "monitoring"
 
   redis:
-    container_name: account_service_cache
+    #container_name: account_service_cache
     hostname: redis
     image: redis:7.2.1-alpine
     volumes:

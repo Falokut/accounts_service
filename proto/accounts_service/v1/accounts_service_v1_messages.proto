@@ -23,10 +23,10 @@ message VerifyAccountRequest {
 message SignInRequest {
     string Email = 1 [json_name = "email"];
     string Password = 2 [json_name = "password"];
-    string ClientIP = 3[json_name = "client_ip"]; 
+    string ClientIp = 3[json_name = "client_ip"]; 
 }
 
-message AccessResponce {
+message AccessResponse {
     string SessionID = 1 [json_name = "session_id"];
 }
 
@@ -43,13 +43,13 @@ message ChangePasswordRequest {
 
 message SessionInfo {
     // IP address of the user's client
-    string  ClientIP = 1 [json_name = "client_ip"];
-    string MachineID = 2[json_name="machine_id"];
+    string  ClientIp = 1 [json_name = "client_ip"];
+    string MachineId = 2[json_name="machine_id"];
     // last activity time in UTC
     google.protobuf.Timestamp LastActivity = 3 [json_name = "last_activity"];
 }
 
-message AllSessionsResponce {
+message AllSessionsResponse {
     map<string, SessionInfo> Sessions = 1 [json_name = "sessions"];
 }
 

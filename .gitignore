@@ -18,6 +18,7 @@
 # protected files
 *.env.yml
 *.env
+**/userlist.txt
 
 # ignore all keys
 *.cnf

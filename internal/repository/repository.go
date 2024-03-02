@@ -2,108 +2,93 @@ package repository
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"time"
 
-	"github.com/Falokut/accounts_service/internal/model"
+	"github.com/Falokut/accounts_service/internal/models"
 )
 
-
+type Transaction interface {
+	Rollback() error
+	Commit() error
+}
 
 // AccountRepository provides methods to interact with user accounts in the database.
 //
 //go:generate mockgen -source=repository.go -destination=mocks/accountRepository.go
 type AccountRepository interface {
 	// CreateAccount creates a new account in the database.
-	CreateAccount(ctx context.Context, account model.Account) (*sql.Tx, string, error)
+	CreateAccount(ctx context.Context, account models.Account) (Transaction, string, error)
 
 	// IsAccountWithEmailExist checks if an account with the given email exists in the database.
 	IsAccountWithEmailExist(ctx context.Context, email string) (bool, error)
 
 	// GetAccountByEmail retrieves an account from the database using the email.
-	GetAccountByEmail(ctx context.Context, email string) (model.Account, error)
+	GetAccountByEmail(ctx context.Context, email string) (models.Account, error)
+
+	// GetCachedAccount retrieves the email using the account id.
+	GetAccountEmail(ctx context.Context, accountId string) (string, error)
 
 	// ChangePassword updates the password hash of an account with the given email in the database.
 	ChangePassword(ctx context.Context, email string, passwordHash string) error
 
-	// DeleteAccount removes the account with the given ID from the database.
-	DeleteAccount(ctx context.Context, id string) (*sql.Tx, error)
+	// DeleteAccount removes the account with the given id from the database.
+	DeleteAccount(ctx context.Context, id string) (Transaction, error)
 
 	// Shutdown performs cleanup and shuts down the repository.
 	Shutdown() error
 }
 
-// CachedAccount represents the cached account data.
-type CachedAccount struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
-// RegistrationCache provides methods to interact with the registration cache.
+// RegistrationRepository provides methods to interact with the registration repository.
 //
-//go:generate mockgen -source=repository.go -destination=mocks/registrationCache.go
-type RegistrationCache interface {
-	// IsAccountInCache checks if the account associated with the given email is present in the cache.
-	// It returns true if the account is found in the cache, otherwise false.
-	// An error is returned if there is an issue while checking the cache.
-	IsAccountInCache(ctx context.Context, email string) (bool, error)
+//go:generate mockgen -source=repository.go -destination=mocks/RegistrationRepository.go
+type RegistrationRepository interface {
+	// IsAccountInRepository checks if the account associated with the given email is present in the repository.
+	// It returns true if the account is found in the repository, otherwise false.
+	// An error is returned if there is an issue while checking the repository.
+	IsAccountExist(ctx context.Context, email string) (bool, error)
 
-	// CacheAccount caches the account with the given email and its details with a specified time-to-live duration.
-	CacheAccount(ctx context.Context, email string, Account CachedAccount, NonActivatedAccountTTL time.Duration) error
+	// SetAccount caches the account with the given email and its details with a specified time-to-live duration.
+	SetAccount(ctx context.Context, email string, account models.RegisteredAccount, ttl time.Duration) error
 
-	// DeleteAccountFromCache removes the account with the given email from the cache.
-	DeleteAccountFromCache(ctx context.Context, email string) error
+	// DeleteAccount removes the account with the given email from the repository.
+	DeleteAccount(ctx context.Context, email string) error
 
-	// GetCachedAccount retrieves the cached account data using the email.
-	GetCachedAccount(ctx context.Context, email string) (CachedAccount, error)
+	// GetAccount retrieves the cached account data using the email.
+	GetAccount(ctx context.Context, email string) (models.RegisteredAccount, error)
 
 	PingContext(ctx context.Context) error
 
-	// Shutdown performs cleanup and shuts down the registration cache repository.
+	// Shutdown performs cleanup and shuts down the registration repository.
 	Shutdown() error
 }
 
-var (
-	ErrSessionNotFound = errors.New("session not found")
-)
-
-// SessionsCache provides methods to interact with the sessions cache.
+// SessionsRepository provides methods to interact with the sessions repository.
 //
-//go:generate mockgen -source=repository.go -destination=mocks/sessionsCache.go
-type SessionsCache interface {
+//go:generate mockgen -source=repository.go -destination=mocks/SessionsRepository.go
+type SessionsRepository interface {
 	// CacheSession caches the session data.
-	CacheSession(ctx context.Context, toCache model.SessionCache) error
+	SetSession(ctx context.Context, session models.Session, ttl time.Duration) error
 
-	// TerminateSessions terminates the specified sessions for the given account ID.
-	TerminateSessions(ctx context.Context, sessionsID []string, accountID string) error
+	// TerminateSessions terminates the specified sessions for the given account id.
+	TerminateSessions(ctx context.Context, sessionsID []string, accountId string) error
 
-	// UpdateLastActivityForSession updates the last activity time for the session with the given ID.
-	UpdateLastActivityForSession(ctx context.Context, cachedSession model.SessionCache, sessionID string, LastActivityTime time.Time) error
+	// UpdateLastActivityForSession updates the last activity time for the session.
+	UpdateLastActivityForSession(ctx context.Context, session models.Session, lastActivityTime time.Time, ttl time.Duration) error
 
-	// GetSessionCache retrieves the cached session data for a specific session ID.
-	GetSessionCache(ctx context.Context, sessionID string) (model.SessionCache, error)
+	// GetSession retrieves the cached session data for a specific session id.
+	GetSession(ctx context.Context, sessionId string) (models.Session, error)
 
-	// GetSessionsForAccount fetches the sessions associated with a particular account ID.
-	GetSessionsForAccount(ctx context.Context, accountID string) (map[string]SessionInfo, error)
+	// GetSessionsForAccount fetches the sessions associated with a particular account id.
+	GetSessionsForAccount(ctx context.Context, accountId string) (map[string]models.SessionInfo, error)
 
-	// GetSessionsForAccount fetches the sessions associated with a particular account ID.
-	GetSessionsList(ctx context.Context, accountID string) ([]string, error)
+	// GetSessionsIds fetches the sessions associated with a particular account id.
+	GetSessionsIds(ctx context.Context, accountId string) ([]string, error)
 
 	PingContext(ctx context.Context) error
 
-	TerminateAllSessions(ctx context.Context, accountID string) error
-	// Shutdown stops the cache operations.
+	TerminateAllSessions(ctx context.Context, accountId string) error
+	// Shutdown stops the repository operations.
 	Shutdown() error
-}
-
-type CacheRepo struct {
-	RegistrationCache RegistrationCache
-	SessionsCache     SessionsCache
-}
-
-func NewCacheRepository(account RegistrationCache, sessionsCache SessionsCache) CacheRepo {
-	return CacheRepo{RegistrationCache: account, SessionsCache: sessionsCache}
 }
 
 type DBConfig struct {

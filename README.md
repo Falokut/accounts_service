@@ -1,25 +1,32 @@
+
+# Accounts service #
+
+[![Go Report Card](https://goreportcard.com/badge/github.com/Falokut/accounts_service)](https://goreportcard.com/report/github.com/Falokut/accounts_service)
+[![go.dev reference](https://img.shields.io/badge/go.dev-reference-007d9c?logo=go&logoColor=white&style=flat-square)](https://pkg.go.dev/github.com/Falokut/accounts_service)
+![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/Falokut/accounts_service)
+[![Go](https://github.com/Falokut/accounts_service/actions/workflows/go.yml/badge.svg?branch=master)](https://github.com/Falokut/accounts_service/actions/workflows/go.yml) ![](https://changkun.de/urlstat?mode=github&repo=Falokut/accounts_service)
+[![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
+
 # Content
 
-+ [Accounts service](#accounts-service)
++ [About service](#about-service)
     + [Features](#features)
-    + [Accounts and authentication](#accounts-and-authentication)
-    + [Registration](#registration)
+        + [Accounts and authentication](#accounts-and-authentication)
+        + [Registration](#registration)
+    + [Events](#events)
 + [Configuration](#configuration)
     + [Params info](#configuration-params-info)
         + [Database config](#database-config)
-        + [Kafka config](#kafka-config)
         + [Jaeger config](#jaeger-config)
         + [Prometheus config](#prometheus-config)
         + [time.Duration](#timeduration-yaml-supported-values)
-        + [Redis config](#redis-config)
-        + [JWT token config](#jwt-token-config)
 + [Metrics](#metrics)
 + [Docs](#docs)
 + [Author](#author)
 + [License](#license)
 ---------
 
-# Accounts service
+# About service
 
 The Account Service is a robust and secure service that provides essential functionalities for user accounts management. It offers a seamless user experience with features such as registration, password reset, account confirmation, login, and authentication.
 
@@ -33,7 +40,7 @@ The Account Service is a robust and secure service that provides essential funct
 
 4. Login: Once registered and confirmed, users can securely log in to their accounts using their email and password. The service utilizes robust authentication protocols to protect account information and ensure secure access.
 
-5. Authentication: To enhance security and prevent unauthorized access, the service employs authentication methods such as session-based identification and client identification based on their IP addresses. If the IP address provided in the request does not match the one stored in the session cache, access will be denied. These security measures ensure the safeguarding of user accounts and help in protecting against unauthorized access.
+5. Authentication: To enhance security and prevent unauthorized access, the service employs authentication methods such as session-based identification and client identification based on their machine ID. If the machine ID provided in the request does not match the one stored in the session cache, access will be denied. These security measures ensure the safeguarding of user accounts and help in protecting against unauthorized access.
 
 The Account Service provides a reliable, efficient, and user-friendly solution for managing user accounts in web applications. With its comprehensive set of features, it ensures the security and integrity of user data, delivering a seamless login and account management experience.
 
@@ -42,18 +49,24 @@ The accounts service features a login system where users can securely log in via
 
 To create an account, users can register by providing their email and password. Once registered and confirmed emails, users can log in to their accounts using their credentials. The system will generate a session token for the user, which they will use for authentication in future requests.
 
-Users remain logged in until they manually log out or their session expires. This eliminates the need for users to repeatedly authenticate themselves for each request, providing a seamless experience.
+Users remaster logged in until they manually log out or their session expires. This eliminates the need for users to repeatedly authenticate themselves for each request, providing a seamless experience.
 
 Users can safely access the services using their account information. Additionally, it's worth noting that passwords are encrypted and not stored in plain text. Instead, they are encrypted using encryption algorithm bcrypt. This provides an added layer of security, as even in the event of a data breach, it would be extremely difficult for malicious actors to recover and exploit these passwords.
 
 When registering a new account, the entered passwords are securely encrypted before being stored in the database. This way, user passwords are protected from unauthorized access.
 
 ## Registration
-During the registration process, an email confirmation link is sent to the user's provided email address (need another request). The user must click on this link to verify their account and activate it. Once the email is confirmed, the account information is securely transferred from the Redis cache to the main database.
+During the registration process, an email confirmation link is sent to the user's provided email address (need another request). The user must click on this link to verify their account and activate it. Once the email is confirmed, the account information is securely transferred from the Redis cache to the master database.
 
 Implementing this email verification step helps ensure that only legitimate users with valid email addresses can create accounts on the cinema ticket. It helps prevent potential abuse or unauthorized access by requiring users to verify their identities before gaining full access to the system.
 
 ---
+
+# Events
+The service generate 2 types of events: requests for the delivery of [tokens](./internal/events/tokensDeliveryMQ.go) to the user and events that occur with the [accounts](./internal/events/accountsEvents.go)(its creation, deletion, change of email). [events package](./internal/events/events.go)
+
+---
+
 # Configuration
 1. Create .env in root dir  
 Example env for redis:
@@ -62,37 +75,9 @@ REDIS_PASSWORD=redispass
 REDIS_AOF_ENABLED=no
 ```
 2. [Configure accounts_db](accounts_db/README.md#Configuration)
-3. Create secrets.env.yml inside docker/containers-configs/
-Example config for service:
-``` yaml
-
-db_config:
-  password: "YourPasswordForAccountsService" # password, that you provided in .env in accounts_db service
-                                             # in accounts_service role (for encrypted password actual password, not hash)
-  
-crypto:
-  bcrypt_cost: 5 # min 4, max 31
-
-JWT:  
-  change_password_token:
-    TTL: 2h
-    secret: "AnyString" # Any string for jwt tokens sign  
-  verify_account_token:
-    TTL: 3h
-    secret: "AnyString" # Any string for jwt tokens sign  
-
-redis_registration_options:
-  password: "redispass" # Here is your password for redis with registration cache db 
-
-session_cache_options:
-  password: "redispass"  # Here is your password for redis with session cache db
-
-account_sessions_cache_options:
-  password: "redispass" # Here is your password for redis with account sessions cache db 
-``` 
-4. Create a configuration file or change the config.yml file in docker\containers-configs.
+3. Create a configuration file or change the config.yml file in docker\containers-configs.
 If you are creating a new configuration file, specify the path to it in docker-compose volume section (your-path/config.yml:configs/)
-5. Configure kafka broker [example compose file](kafka-cluster.yml)
+4. Configure kafka broker [example compose file](kafka-cluster.yml)
 
 ## Configuration params info
 if supported values is empty, then any type values are supported
@@ -112,17 +97,26 @@ if supported values is empty, then any type values are supported
 | nonactivated_account_ttl   |      |   | time.Duration with positive duration | the time that registered(non activated) account will be stored in the cache |[supported values](#time.Duration-yaml-supported-values)  |
 | sessions_ttl   |      |   | time.Duration with positive duration | the time that session will be stored in the cache |[supported values](#time.Duration-yaml-supported-values)  |
 |db_config|||nested yml configuration  [database config](#database-config) || configuration for database connection | |
-|email_kafka_config|||  nested yml configuration  [kafka config](#kafka-config)||configuration for kafka connection | |
 |jaeger|||nested yml configuration  [jaeger config](#jaeger-config)|configuration for jaeger connection | |
-|redis_registration_options|||nested yml configuration  [redis config](#redis-config)|configuration for redis connection for redistration cache||
-|session_cache_options |||nested yml configuration  [redis config](#redis-config)  | configuration for redis connection for sessions cache | |
-|account_sessions_cache_options|||  nested yml configuration  [redis config](#redis-config)| configuration for redis connection for account sessions cache | |
+| network  |  registration_repository |  REGISTRATION_REPOSITORY_NETWORK |  string |   | tcp or udp  |
+| addr  |  registration_repository | REGISTRATION_REPOSITORY_ADDRESS  |string|ip address(or host) with port of redis| all valid addresses formatted like host:port or ip-address:port|
+| password  |  registration_repository |  REGISTRATION_REPOSITORY_PASSWORD |  string | password for connection to the redis  |   |
+|  db | registration_repository  | REGISTRATION_REPOSITORY_DATABASE  |  int | the number of the database in the redis  |   |
+| network  |  sessions_repository |  SESSIONS_REPOSITORY_NETWORK |  string |   | tcp or udp  |
+| addr  |  sessions_repository | SESSIONS_REPOSITORY_ADDRESS  |string|ip address(or host) with port of redis| all valid addresses formatted like host:port or ip-address:port|
+| password  |  sessions_repository |  SESSIONS_REPOSITORY_PASSWORD |  string | password for connection to the redis  |   |
+|  db | sessions_repository  | SESSIONS_REPOSITORY_DATABASE  |  int | the number of the database in the redis  |   |
 |num_retries_for_terminate_sessions|||int|number of retries for session termination, when deleting account||
 |retry_sleep_time_for_terminate_sessions||| time.Duration with positive duration | the time delay between session deletion retries|[supported values](#time.Duration-yaml-supported-values)|
 |bcrypt_cost|crypto|BCRYPT_COST| int |the bcrypt hashing complexity|4-31|
-|change_password_token|JWT||nested yml configuration [jwt config](#jwt-token-config)| configuration for jwt-token for change password||
-|verify_account_token|JWT||nested yml configuration [jwt config](#jwt-token-config)| configuration for jwt-token for account verification(activation)||
-
+| ttl  |  change_password_token |  | time.Duration with positive duration| the amount of time this token will be valid for|[supported values](#time.Duration-yaml-supported-values)|
+| secret  |  change_password_token |  CHANGE_PASSWORD_TOKEN_SECRET |  string | the secret to generating a jwt token  ||
+| ttl  |  verify_account_token |  | time.Duration with positive duration| the amount of time this token will be valid for|[supported values](#time.Duration-yaml-supported-values)|
+| secret  |  verify_account_token |  VERIFY_ACCOUNT_TOKEN_SECRET |  string | the secret to generating a jwt token  ||
+| ttl  |  change_email_token |  | time.Duration with positive duration| the amount of time this token will be valid for|[supported values](#time.Duration-yaml-supported-values)|
+| secret  |  change_email_token |  CHANGE_PASSWORD_TOKEN_SECRET |  string | the secret to generating a jwt token  ||
+| brokers  |  account_events |  |  []string, array of strings| list of the addresses of kafka brokers| any list of addresses like host:port or ip-address:port|
+| brokers  |  tokens_delivery |  |  []string, array of strings| list of the addresses of kafka brokers| any list of addresses like host:port or ip-address:port|
 
 ### Database config
 |yml name| env name|param type| description | supported values |
@@ -163,19 +157,6 @@ A Duration value can be expressed in various formats, such as in seconds, minute
 - 100µs represents a duration of 100 microseconds.
 - 10ns represents a duration of 10 nanoseconds.
 
-### Redis config
-|yml name| env name|param type| description | supported values |
-|-|-|-|-|-|
-|network | |string| network| tcp or udp|
-|addr||string|ip address(or host) with port of redis| all valid addresses formatted like host:port or ip-address:port |
-|password|REDIS_PASSWORD|string|password for connection to the redis||
-|db||int|the number of the database in the redis||
-
-### JWT token config
-|yml name| env name|param type| description | supported values |
-|-|-|-|-|-|
-|secret||string|the secret to generating a jwt token||
-|TTL||time.Duration with positive duration| the amount of time this token will be valid for|[supported values](#time.Duration-yaml-supported-values)|
 
 # Metrics
 The service uses Prometheus and Jaeger and supports distributed tracing

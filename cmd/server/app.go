@@ -8,119 +8,164 @@ import (
 	"syscall"
 
 	"github.com/Falokut/accounts_service/internal/config"
-	"github.com/Falokut/accounts_service/internal/repository"
+	"github.com/Falokut/accounts_service/internal/events"
+	"github.com/Falokut/accounts_service/internal/handler"
+	"github.com/Falokut/accounts_service/internal/repository/postgresrepository"
+	"github.com/Falokut/accounts_service/internal/repository/redisrepository"
 	"github.com/Falokut/accounts_service/internal/service"
 	accounts_service "github.com/Falokut/accounts_service/pkg/accounts_service/v1/protos"
 	jaegerTracer "github.com/Falokut/accounts_service/pkg/jaeger"
+	"github.com/Falokut/accounts_service/pkg/logging"
 	"github.com/Falokut/accounts_service/pkg/metrics"
 	server "github.com/Falokut/grpc_rest_server"
 	"github.com/Falokut/healthcheck"
-	logging "github.com/Falokut/online_cinema_ticket_office.loggerwrapper"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 
 	"github.com/opentracing/opentracing-go"
-	"github.com/segmentio/kafka-go"
 )
 
 func main() {
-	logging.NewEntry(logging.FileAndConsoleOutput)
+	logging.NewEntry(logging.ConsoleOutput)
 	logger := logging.GetLogger()
-	appCfg := config.GetConfig()
-	log_level, err := logrus.ParseLevel(appCfg.LogLevel)
+	cfg := config.GetConfig()
+
+	logLevel, err := logrus.ParseLevel(cfg.LogLevel)
 	if err != nil {
 		logger.Fatal(err)
 	}
-	logger.Logger.SetLevel(log_level)
+	logger.Logger.SetLevel(logLevel)
 
-	tracer, closer, err := jaegerTracer.InitJaeger(appCfg.JaegerConfig)
+	tracer, closer, err := jaegerTracer.InitJaeger(cfg.JaegerConfig)
 	if err != nil {
-		logger.Fatal("cannot create tracer", err)
+		logger.Errorf("Shutting down, error while creating tracer %v", err)
+		return
 	}
 	logger.Info("Jaeger connected")
 	defer closer.Close()
-
 	opentracing.SetGlobalTracer(tracer)
 
 	logger.Info("Metrics initializing")
-	metric, err := metrics.CreateMetrics(appCfg.PrometheusConfig.Name)
+	metric, err := metrics.CreateMetrics(cfg.PrometheusConfig.Name)
 	if err != nil {
-		logger.Fatal(err)
+		logger.Errorf("Shutting down, error while creating metrics %v", err)
+		return
 	}
 
+	shutdown := make(chan error, 1)
 	go func() {
-		logger.Infof("Metrics server running at %s:%s", appCfg.PrometheusConfig.ServerConfig.Host,
-			appCfg.PrometheusConfig.ServerConfig.Port)
-		if err := metrics.RunMetricServer(appCfg.PrometheusConfig.ServerConfig); err != nil {
-			logger.Fatal(err)
+		logger.Info("Metrics server running")
+		if err := metrics.RunMetricServer(cfg.PrometheusConfig.ServerConfig); err != nil {
+			logger.Errorf("Shutting down, error while running metrics server %v", err)
+			shutdown <- err
+			return
 		}
 	}()
 
 	logger.Info("Registration cache initializing")
-	regCacheOpt := appCfg.RegistrationCacheOptions.ConvertToRedisOptions()
-	registrationCache, err := repository.NewRedisRegistrationCache(regCacheOpt, logger.Logger)
+	registrationRepository, err := redisrepository.NewRedisRegistrationRepository(
+		&redis.Options{
+			Network:  cfg.RegistrationRepositoryConfig.Network,
+			Addr:     cfg.RegistrationRepositoryConfig.Addr,
+			Password: cfg.RegistrationRepositoryConfig.Password,
+			DB:       cfg.RegistrationRepositoryConfig.DB,
+		}, logger.Logger, metric)
+
 	if err != nil {
-		logger.Fatalf("Shutting down, connection to the redis registration cache is not established: %s options: %v",
-			err.Error(), regCacheOpt)
+		logger.Errorf("Shutting down, connection to the redis registration repository is not established: %s",
+			err.Error())
+		return
 	}
-	defer registrationCache.Shutdown()
+	defer registrationRepository.Shutdown()
 
 	logger.Info("Sessions cache initializing")
-	sessionCacheOpt := appCfg.SessionCacheOptions.ConvertToRedisOptions()
-	accountSessionCacheOpt := appCfg.AccountSessionsCacheOptions.ConvertToRedisOptions()
-	sessionsCache, err := repository.NewSessionCache(sessionCacheOpt,
-		accountSessionCacheOpt, logger.Logger, appCfg.SessionsTTL)
+	sessionsRepository, err := redisrepository.NewSessionsRepository(
+		&redis.Options{
+			Network:  cfg.SessionsCacheOptions.Network,
+			Addr:     cfg.SessionsCacheOptions.Addr,
+			Password: cfg.SessionsCacheOptions.Password,
+			DB:       cfg.SessionsCacheOptions.DB,
+		},
+		logger.Logger, metric)
 	if err != nil {
-		logger.Fatalf("Shutting down, connection to the redis token cache is not established: %s options: %v",
-			err.Error(), sessionCacheOpt)
+		logger.Errorf("Shutting down, connection to the redis sessions repository is not established: %s",
+			err.Error())
+		return
 	}
-	defer sessionsCache.Shutdown()
+	defer sessionsRepository.Shutdown()
 
 	logger.Info("Database initializing")
-	database, err := repository.NewPostgreDB(appCfg.DBConfig)
+	database, err := postgresrepository.NewPostgreDB(cfg.DBConfig)
 	if err != nil {
-		logger.Fatalf("Shutting down, connection to the database is not established: %s", err.Error())
+		logger.Errorf("Shutting down, connection to the database is not established: %s", err.Error())
+		return
 	}
 	defer database.Close()
 
-	redisRepo := repository.NewCacheRepository(registrationCache, sessionsCache)
-
 	logger.Info("Repository initializing")
-	repo := repository.NewAccountsRepository(database)
+	repo := postgresrepository.NewAccountsRepository(database, logger.Logger)
 
-	kafkaWriter := getKafkaWriter(appCfg.EmailKafka)
-	defer kafkaWriter.Close()
+	accountsEventsMQ := events.NewAccountsEvents(events.KafkaConfig{
+		Brokers: cfg.AccountEventsConfig.Brokers,
+	}, logger.Logger)
+	defer accountsEventsMQ.Shutdown()
+
+	tokenDeliveryMQ := events.NewTokensDeliveryMQ(events.KafkaConfig{
+		Brokers: cfg.TokensDeliveryConfig.Brokers,
+	}, logger.Logger)
+	defer accountsEventsMQ.Shutdown()
 
 	logger.Info("Healthcheck initializing")
-	healthcheckManager := healthcheck.NewHealthManager(logger.Logger,
-		[]healthcheck.HealthcheckResource{database, registrationCache, sessionsCache}, appCfg.HealthcheckPort, nil)
 	go func() {
-		logger.Info("Healthcheck server running")
+		logger.Info("Healthcheck initializing")
+		healthcheckManager := healthcheck.NewHealthManager(logger.Logger,
+			[]healthcheck.HealthcheckResource{repo}, cfg.HealthcheckPort, nil)
 		if err := healthcheckManager.RunHealthcheckEndpoint(); err != nil {
-			logger.Fatalf("Shutting down, can't run healthcheck endpoint %s", err.Error())
+			logger.Errorf("Shutting down, error while running healthcheck endpoint %s", err.Error())
+			shutdown <- err
+			return
 		}
 	}()
 	logger.Info("Healthcheck initialized")
 
-	profilesService, err := service.NewProfilesService(appCfg.ProfilesServiceAddr)
-	if err != nil {
-		logger.Fatalf("Shutting down, connection to the profiles service is not established: %s", err.Error())
-	}
-	defer profilesService.Shutdown()
-
 	logger.Info("Service initializing")
-	service := service.NewAccountService(repo,
-		logger.Logger, redisRepo, kafkaWriter, appCfg, metric, profilesService)
+	service := service.NewAccountsService(repo,
+		logger.Logger, registrationRepository, sessionsRepository, accountsEventsMQ, tokenDeliveryMQ,
+		service.AccountsServiceConfig{
+			ChangePasswordTokenTTL:             cfg.JWT.ChangePasswordToken.TTL,
+			ChangePasswordTokenSecret:          cfg.JWT.ChangePasswordToken.Secret,
+			VerifyAccountTokenTTL:              cfg.JWT.VerifyAccountToken.TTL,
+			VerifyAccountTokenSecret:           cfg.JWT.VerifyAccountToken.Secret,
+			NumRetriesForTerminateSessions:     cfg.NumRetriesForTerminateSessions,
+			RetrySleepTimeForTerminateSessions: cfg.RetrySleepTimeForTerminateSessions,
+			NonActivatedAccountTTL:             cfg.NonActivatedAccountTTL,
+			BcryptCost:                         cfg.Crypto.BcryptCost,
+			SessionTTL:                         cfg.SessionsTTL,
+		})
+
+	handler := handler.NewAccountsServiceHandler(logger.Logger, service)
 
 	logger.Info("Server initializing")
-	s := server.NewServer(logger.Logger, service)
-
-	s.Run(getListenServerConfig(appCfg), metric, nil, nil)
+	s := server.NewServer(logger.Logger, handler)
+	go func() {
+		if err := s.Run(getListenServerConfig(cfg), metric, nil, nil); err != nil {
+			logger.Errorf("Shutting down, error while running server %s", err.Error())
+			shutdown <- err
+			return
+		}
+	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGHUP, syscall.SIGTERM)
 
-	<-quit
+	select {
+	case <-quit:
+		break
+	case <-shutdown:
+		break
+	}
+
 	s.Shutdown()
 }
 
@@ -141,13 +186,4 @@ func getListenServerConfig(cfg *config.Config) server.Config {
 				mux, serv)
 		},
 	}
-}
-
-func getKafkaWriter(cfg config.KafkaConfig) *kafka.Writer {
-	w := &kafka.Writer{
-		Addr:   kafka.TCP(cfg.Brokers...),
-		Topic:  cfg.Topic,
-		Logger: logging.GetLogger().Logger,
-	}
-	return w
 }

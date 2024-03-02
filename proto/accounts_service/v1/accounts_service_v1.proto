@@ -10,7 +10,7 @@ import "google/protobuf/empty.proto";
 
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
     schemes: HTTP;
-    //schemes: HTTPS;
+    schemes: HTTPS;
     consumes: "application/json";
     produces: "application/json";
 
@@ -24,23 +24,23 @@ option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
         };
     }
     responses: {
-        key: "403"
-            value: {
-                description: "Returned when the user does not have permission to access the resource."
-                schema: {
-                    json_schema: {
-                        type: STRING;
-                    }
-                }
-            }
-    };
-    responses: {
 		key: "404";
 		value: {
 			description: "Returned when the resource does not exist.";
 			schema: {
 				json_schema: {
-					ref: "#/definitions/rpcStatus";
+					ref: "#/definitions/googlerpcStatus";
+				}
+			}
+		}
+	}
+    responses: {
+		key: "404";
+		value: {
+			description: "Returned when session with specified id not found.";
+			schema: {
+				json_schema: {
+					ref: "#/definitions/googlerpcStatus";
 				}
 			}
 		}
@@ -51,7 +51,7 @@ option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
 			description: "Something went wrong.";
 			schema: {
 				json_schema: {
-					ref: "#/definitions/rpcStatus";
+					ref: "#/definitions/googlerpcStatus";
 				}
 			}
 		}
@@ -69,13 +69,80 @@ service accountsServiceV1 {
             responses: {
                 key: "400"
                     value: {
-                        description: "Returned when specified params is not valid or account with this email alredy exist."
+                        description: "Returned when specified params is not valid."
+                        schema: {
+                            json_schema: {
+                                ref: "#/definitions/googlerpcStatus";
+                            }
+                        }
+                    }
+            };
+            responses: {
+                key: "409"
+                    value: {
+                        description: "Returned when account with email is alredy exists."
+                        schema: {
+                            json_schema: {
+                                ref: "#/definitions/googlerpcStatus";
+                            }
+                        }
                     }
             };
         };
     }
-     
-    // Sending message into email queue with account verification token
+    rpc DeleteAccount(google.protobuf.Empty) returns(google.protobuf.Empty){
+        option (google.api.http) = { delete: "/v1/account" };
+        option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+            parameters: {
+                headers: {
+                    name: "X-Session-Id";
+                    description: "ID of the session issued when logging in to the account";
+                    type: STRING;
+                    required: true; 
+                };
+                headers: {
+                    name: "X-Machine-Id";
+                    description: "Unique identifier of the client machine";
+                    type: STRING;
+                    required: true; 
+                };
+            }
+            responses: {
+                key: "400"
+                    value: {
+                        description: "Returned when has problem with parameters in headers."
+                        schema: {
+                            json_schema: {
+                                ref: "#/definitions/googlerpcStatus";
+                            }
+                        }
+                    }
+            };
+            responses: {
+                key: "401"
+                    value: {
+                        description: "Returned when X-Session-Id not found in header params."
+                        schema: {
+                            json_schema: {
+                                ref: "#/definitions/googlerpcStatus";
+                            }
+                        }
+                    }
+            };
+            responses: {
+                key: "404"
+                    value: {
+                        description: "Returned when account with specified id not found"
+                        schema: {
+                            json_schema: {
+                                ref: "#/definitions/googlerpcStatus";
+                            }
+                        }
+                    }
+            }; 
+        };
+    }
+    
     rpc RequestAccountVerificationToken(VerificationTokenRequest) returns(google.protobuf.Empty){
         option (google.api.http) = {
             get: "/v1/verification"
@@ -85,8 +152,24 @@ service accountsServiceV1 {
                 key: "400";
                 value: {
                     description: "Returned when account with specified email alredy exist or email is not valid";
+                    schema: {
+                        json_schema: {
+                            ref: "#/definitions/googlerpcStatus";
+                        }
+                    }
                 }
             };
+            responses: {
+                key: "404"
+                    value: {
+                        description: "Returned when account with specified email not found."
+                        schema: {
+                            json_schema: {
+                                ref: "#/definitions/googlerpcStatus";
+                            }
+                        }
+                    }
+            }; 
         };
     }
 
@@ -101,18 +184,28 @@ service accountsServiceV1 {
                 key: "400"
                     value: {
                         description: "Returned when has wrong token."
+                        schema: {
+                            json_schema: {
+                                ref: "#/definitions/googlerpcStatus";
+                            }
+                        }
                     }
             };
             responses: {
                 key: "404"
                     value: {
                         description: "Returned when account with specified email in token not found."
+                        schema: {
+                            json_schema: {
+                                ref: "#/definitions/googlerpcStatus";
+                            }
+                        }
                     }
             }; 
         };
     }
 
-    rpc SignIn(SignInRequest) returns(AccessResponce){
+    rpc SignIn(SignInRequest) returns(AccessResponse){
         option (google.api.http) = {
             post: "/v1/sign-in"
             body: "*" 
@@ -123,12 +216,22 @@ service accountsServiceV1 {
                 key: "400"
                     value: {
                         description: "Returned when specified password is not an account password."
+                        schema: {
+                            json_schema: {
+                                ref: "#/definitions/googlerpcStatus";
+                            }
+                        }
                     }
             };
             responses: {
                 key: "404"
                     value: {
                         description: "Returned when account with specified email not found."
+                        schema: {
+                            json_schema: {
+                                ref: "#/definitions/googlerpcStatus";
+                            }
+                        }
                     }
             };
             parameters: {
@@ -142,7 +245,7 @@ service accountsServiceV1 {
         };
     }
 
-    rpc GetAccountID(google.protobuf.Empty) returns(google.protobuf.Empty){
+    rpc GetAccountId(google.protobuf.Empty) returns(google.protobuf.Empty){
         option (google.api.http) = { get: "/v1/account-id" };
         option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
             parameters: {
@@ -175,18 +278,33 @@ service accountsServiceV1 {
                 key: "400"
                 value: {
                     description: "Returned when has problem with parameters in headers."
+                    schema: {
+                        json_schema: {
+                            ref: "#/definitions/googlerpcStatus";
+                        }
+                    }
                 }
             };
             responses: {
                 key: "401"
                     value: {
                         description: "Returned when X-Session-Id not found in header params."
+                        schema: {
+                            json_schema: {
+                                ref: "#/definitions/googlerpcStatus";
+                            }
+                        }
                     }
             };
             responses: {
                 key: "404"
                     value: {
                         description: "Returned when session with specified id not found."
+                        schema: {
+                            json_schema: {
+                                ref: "#/definitions/googlerpcStatus";
+                            }
+                        }
                     }
             }; 
         };
@@ -215,34 +333,52 @@ service accountsServiceV1 {
                 key: "400"
                 value: {
                     description: "Returned when has problem with parameters in headers."
+                    schema: {
+                        json_schema: {
+                            ref: "#/definitions/googlerpcStatus";
+                        }
+                    }
                 }
             };
             responses: {
                 key: "401"
                 value: {
                     description: "Returned when X-Session-Id not found in header params."
+                    schema: {
+                        json_schema: {
+                            ref: "#/definitions/googlerpcStatus";
+                        }
+                    }
                 }
             };
             responses: {
                 key: "404"
                 value: {
                     description: "Returned when session with specified id not found."
+                    schema: {
+                        json_schema: {
+                            ref: "#/definitions/googlerpcStatus";
+                        }
+                    }
                 }
             }; 
         };
     }
 
-
-    // Sending message into email queue with change password token
     rpc RequestChangePasswordToken(ChangePasswordTokenRequest) returns(google.protobuf.Empty){
         option (google.api.http) = {
-            get: "/v1/change-password"
+            get: "/v1/change/password"
         };
         option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
             responses: {
                 key: "404";
                 value: {
                     description: "Returned when account with specified email doesn't exist.";
+                    schema: {
+                        json_schema: {
+                            ref: "#/definitions/googlerpcStatus";
+                        }
+                    }
                 }
             };
         };
@@ -259,18 +395,29 @@ service accountsServiceV1 {
                 key: "400"
                     value: {
                         description: "Returned when has wrong token or specified password not valid."
+                        schema: {
+                            json_schema: {
+                                ref: "#/definitions/googlerpcStatus";
+                            }
+                        }
                     }
             };
             responses: {
                 key: "404"
                     value: {
                         description: "Returned when specified account with email in token not found."
+                        schema: {
+                            json_schema: {
+                                ref: "#/definitions/googlerpcStatus";
+                            }
+                        }
                     }
-            }; 
+            };
+             
         };
     }
 
-    rpc GetAllSessions(google.protobuf.Empty) returns(AllSessionsResponce){
+    rpc GetAllSessions(google.protobuf.Empty) returns(AllSessionsResponse){
         option (google.api.http) = {get: "/v1/sessions"};
         option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
             parameters: {
@@ -291,18 +438,33 @@ service accountsServiceV1 {
                 key: "400"
                     value: {
                         description: "Returned when has problem with parameters in headers."
+                        schema: {
+                            json_schema: {
+                                ref: "#/definitions/googlerpcStatus";
+                            }
+                        }
                     }
             };
             responses: {
                 key: "401"
                     value: {
                         description: "Returned when X-Session-Id not found in header params."
+                        schema: {
+                            json_schema: {
+                                ref: "#/definitions/googlerpcStatus";
+                            }
+                        }
                     }
             };
             responses: {
                 key: "404"
                     value: {
                         description: "Returned when session with specified id not found."
+                        schema: {
+                            json_schema: {
+                                ref: "#/definitions/googlerpcStatus";
+                            }
+                        }
                     }
             }; 
         };
@@ -332,59 +494,37 @@ service accountsServiceV1 {
                 key: "400"
                     value: {
                         description: "Returned when has problem with parameters in headers."
+                        schema: {
+                            json_schema: {
+                                ref: "#/definitions/googlerpcStatus";
+                            }
+                        }
                     }
             };
             responses: {
                 key: "401"
                     value: {
                         description: "Returned when X-Session-Id not found in header params."
+                        schema: {
+                            json_schema: {
+                                ref: "#/definitions/googlerpcStatus";
+                            }
+                        }
                     }
             };
             responses: {
                 key: "404"
                     value: {
                         description: "Returned when session with specified id not found"
+                        schema: {
+                            json_schema: {
+                                ref: "#/definitions/googlerpcStatus";
+                            }
+                        }
                     }
             }; 
         };
     }
 
 
-    rpc DeleteAccount(google.protobuf.Empty) returns(google.protobuf.Empty){
-        option (google.api.http) = { delete: "/v1/account" };
-        option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
-            parameters: {
-                headers: {
-                    name: "X-Session-Id";
-                    description: "ID of the session issued when logging in to the account";
-                    type: STRING;
-                    required: true; 
-                };
-                headers: {
-                    name: "X-Machine-Id";
-                    description: "Unique identifier of the client machine";
-                    type: STRING;
-                    required: true; 
-                };
-            }
-            responses: {
-                key: "400"
-                    value: {
-                        description: "Returned when has problem with parameters in headers."
-                    }
-            };
-            responses: {
-                key: "401"
-                    value: {
-                        description: "Returned when X-Session-Id not found in header params."
-                    }
-            };
-            responses: {
-                key: "404"
-                    value: {
-                        description: "Returned when account with specified id not found"
-                    }
-            }; 
-        };
-    }
 }

@@ -1,30 +1,50 @@
-version: '3.8'
+version: "3.8"
 
 networks:
   accounts_db_network:
     name: "accounts_db_network"
 
 services:
-  accounts_db:
+  accounts_db_master:
     image: postgres:16.0-alpine3.18
     volumes:
       - ./.container_data/database/postgres/data:/var/lib/postgresql/data
-      - ./db/init-up.sql:/docker-entrypoint-initdb.d/init.up.sql
-    ports:
-      - 5436:5432
+      - ./db:/docker-entrypoint-initdb.d
+    expose:
+      - 5432
     networks:
       - accounts_db_network
     environment:
       - PGDATA=/var/lib/postgresql/data
       - POSTGRES_USER=${POSTGRES_USER}
-      - PGUSER=${PGUSER}
+      - PGUSER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=accounts_db
+      - POSTGRES_DB=accounts
+      - SERVICE_NAME=accounts_service
+      - SERVICE_PASSWORD=${SERVICE_PASSWORD}
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready"]
+      test: ["CMD-SHELL", "pg_isready"]
+      start_period: 10s
       interval: 10s
       timeout: 5s
       retries: 5
     deploy:
       restart_policy:
-          condition: unless-stopped
+        condition: unless-stopped
+  accounts_pool:
+    image: bitnami/pgbouncer
+    restart: unless-stopped
+    expose:
+      - 6432
+    networks:
+      - accounts_db_network
+    environment:
+      POSTGRESQL_HOST: accounts_db_master
+      POSTGRESQL_USERNAME: ${POSTGRES_USER}
+      POSTGRESQL_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./docker/pgbouncer/pgbouncer.ini:/bitnami/pgbouncer/conf/pgbouncer.ini
+      - ./docker/pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt
+    depends_on:
+      accounts_db_master:
+        condition: service_healthy
