@@ -113,8 +113,6 @@ if supported values is empty, then any type values are supported
 | secret  |  change_password_token |  CHANGE_PASSWORD_TOKEN_SECRET |  string | the secret to generating a jwt token  ||
 | ttl  |  verify_account_token |  | time.Duration with positive duration| the amount of time this token will be valid for|[supported values](#time.Duration-yaml-supported-values)|
 | secret  |  verify_account_token |  VERIFY_ACCOUNT_TOKEN_SECRET |  string | the secret to generating a jwt token  ||
-| ttl  |  change_email_token |  | time.Duration with positive duration| the amount of time this token will be valid for|[supported values](#time.Duration-yaml-supported-values)|
-| secret  |  change_email_token |  CHANGE_PASSWORD_TOKEN_SECRET |  string | the secret to generating a jwt token  ||
 | brokers  |  account_events |  |  []string, array of strings| list of the addresses of kafka brokers| any list of addresses like host:port or ip-address:port|
 | brokers  |  tokens_delivery |  |  []string, array of strings| list of the addresses of kafka brokers| any list of addresses like host:port or ip-address:port|
 

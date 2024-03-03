@@ -61,11 +61,6 @@ type Config struct {
 			TTL    time.Duration `yaml:"ttl"`
 			Secret string        `yaml:"secret" env:"VERIFY_ACCOUNT_TOKEN_SECRET"`
 		} `yaml:"verify_account_token"`
-
-		ChangeEmailToken struct {
-			TTL    time.Duration `yaml:"ttl"`
-			Secret string        `yaml:"secret" env:"CHANGE_EMAIL_TOKEN_SECRET"`
-		} `yaml:"change_email_token"`
 	} `yaml:"JWT"`
 
 	AccountEventsConfig struct {

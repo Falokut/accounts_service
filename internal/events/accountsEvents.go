@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Falokut/accounts_service/internal/models"
 	"github.com/segmentio/kafka-go"
@@ -21,6 +22,7 @@ func NewAccountsEvents(cfg KafkaConfig, logger *logrus.Logger) *accountsEvents {
 		Addr:                   kafka.TCP(cfg.Brokers...),
 		Logger:                 logger,
 		AllowAutoTopicCreation: true,
+		WriteBackoffMax:        time.Millisecond * 30,
 	}
 	return &accountsEvents{eventsWriter: w, logger: logger}
 }
