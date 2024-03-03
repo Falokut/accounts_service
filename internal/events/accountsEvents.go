@@ -22,7 +22,9 @@ func NewAccountsEvents(cfg KafkaConfig, logger *logrus.Logger) *accountsEvents {
 		Addr:                   kafka.TCP(cfg.Brokers...),
 		Logger:                 logger,
 		AllowAutoTopicCreation: true,
-		WriteBackoffMax:        time.Millisecond * 30,
+		BatchSize:    1,
+		BatchTimeout: 10 * time.Millisecond,
+		Balancer:     &kafka.LeastBytes{},
 	}
 	return &accountsEvents{eventsWriter: w, logger: logger}
 }

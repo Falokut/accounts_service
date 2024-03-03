@@ -21,6 +21,9 @@ func NewTokensDeliveryMQ(cfg KafkaConfig, logger *logrus.Logger) *tokensDelivery
 		Addr:                   kafka.TCP(cfg.Brokers...),
 		Logger:                 logger,
 		AllowAutoTopicCreation: true,
+		BatchSize:    1,
+		BatchTimeout: 10 * time.Millisecond,
+		Balancer:     &kafka.LeastBytes{},
 	}
 	return &tokensDeliveryMQ{eventsWriter: w, logger: logger}
 }
