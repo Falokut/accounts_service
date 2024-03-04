@@ -118,16 +118,16 @@ func (r *AccountsRepository) ChangePassword(ctx context.Context, email string, p
 
 // DeleteAccount deletes the account with the given ID from the database.
 // It takes the ID of the account as input and returns an error, if any.
-func (r *AccountsRepository) DeleteAccount(ctx context.Context, accountID string) (restx repository.Transaction, err error) {
+func (r *AccountsRepository) DeleteAccount(ctx context.Context, accountId string) (restx repository.Transaction, err error) {
 	defer r.handleError(ctx, &err, "DeleteAccount")
 
 	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return
 	}
-	query := fmt.Sprintf("DELETE FROM %s WHERE id=$1;", accountTableName)
+	query := fmt.Sprintf("DELETE FROM %s WHERE id=$1", accountTableName)
 
-	_, err = tx.ExecContext(ctx, query, accountID)
+	_, err = tx.ExecContext(ctx, query, accountId)
 	if err != nil {
 		tx.Rollback()
 		return
@@ -138,16 +138,11 @@ func (r *AccountsRepository) DeleteAccount(ctx context.Context, accountID string
 func (r *AccountsRepository) GetAccountEmail(ctx context.Context, accountId string) (email string, err error) {
 	defer r.handleError(ctx, &err, "GetAccountEmail")
 
-	query := fmt.Sprintf("SELECT email FROM %s WHERE id=$1;", accountTableName)
-	var emailStr struct {
-		Email string `db:"email"`
-	}
-	err = r.db.GetContext(ctx, &emailStr, query, email)
-	if errors.Is(err, sql.ErrNoRows) {
+	query := fmt.Sprintf("SELECT email FROM %s WHERE id=$1", accountTableName)
+	err = r.db.GetContext(ctx, &email, query, accountId)
+	if err != nil {
 		return
 	}
-
-	email = emailStr.Email
 	return
 }
 
@@ -179,7 +174,7 @@ func (r *AccountsRepository) handleError(ctx context.Context, err *error, functi
 			*err = models.Error(code, "account not found")
 		case *err != nil:
 			code = models.Internal
-			*err = models.Error(code, "repository iternal error")
+			*err = models.Error(code, "repository internal error")
 		}
 
 	}
@@ -198,13 +193,13 @@ func (r *AccountsRepository) logError(err error, functionName string) {
 				"error.msg":           repoErr.Msg,
 				"error.code":          repoErr.Code,
 			},
-		).Error("accountsrepository error occurred")
+		).Error("accounts repository error occurred")
 	} else {
 		r.logger.WithFields(
 			logrus.Fields{
 				"error.function.name": functionName,
 				"error.msg":           err.Error(),
 			},
-		).Error("accountsrepository error occurred")
+		).Error("accounts repository error occurred")
 	}
 }
