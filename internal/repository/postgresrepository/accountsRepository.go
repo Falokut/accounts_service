@@ -167,16 +167,12 @@ func (r *AccountsRepository) handleError(ctx context.Context, err *error, functi
 	r.logError(*err, functionName)
 	var repoErr = &models.ServiceError{}
 	if !errors.As(*err, &repoErr) {
-		var code models.ErrorCode
 		switch {
 		case errors.Is(*err, sql.ErrNoRows):
-			code = models.NotFound
-			*err = models.Error(code, "account not found")
+			*err = models.Error(models.NotFound, "account not found")
 		case *err != nil:
-			code = models.Internal
-			*err = models.Error(code, "repository internal error")
+			*err = models.Error(models.Internal, "repository internal error")
 		}
-
 	}
 }
 

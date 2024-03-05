@@ -63,7 +63,7 @@ func (h *AccountsServiceHandler) RequestAccountVerificationToken(ctx context.Con
 	if err != nil {
 		return
 	}
-	
+
 	return &emptypb.Empty{}, nil
 }
 
@@ -97,6 +97,10 @@ func (h *AccountsServiceHandler) SignIn(ctx context.Context,
 		ClientIp:  in.ClientIp,
 		MachineId: machineID,
 	})
+
+	if err != nil {
+		return
+	}
 
 	return &accounts_service.AccessResponse{SessionID: sessionId}, nil
 }

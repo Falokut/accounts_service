@@ -357,6 +357,7 @@ func (s *accountsService) DeleteAccount(ctx context.Context, sessionId, machineI
 	if err != nil {
 		return
 	}
+	
 	tx, err := s.accountsRepository.DeleteAccount(ctx, cache.AccountId)
 	if err != nil {
 		return

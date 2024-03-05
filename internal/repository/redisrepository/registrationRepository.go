@@ -86,7 +86,7 @@ func (r *RegistrationRepository) SetAccount(ctx context.Context,
 
 // GetAccount retrieves the cached account information for the specified email from the repository.
 // It returns the cached account data and any encountered error during retrieval.
-func (r RegistrationRepository) GetAccount(ctx context.Context, email string) (account models.RegisteredAccount, err error) {
+func (r *RegistrationRepository) GetAccount(ctx context.Context, email string) (account models.RegisteredAccount, err error) {
 	defer r.updateMetrics(err, "GetAccount")
 	defer handleError(ctx, &err)
 	defer r.logError(err, "GetAccount")

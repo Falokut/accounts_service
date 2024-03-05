@@ -46,7 +46,7 @@ func handleError(ctx context.Context, err *error) {
 		switch {
 		case errors.Is(*err, redis.Nil):
 			code = models.NotFound
-			*err = models.Error(code, "entity not found")
+			*err = models.Error(code, "cache entity not found")
 		default:
 			code = models.Internal
 			*err = models.Error(code, "cache internal error")
