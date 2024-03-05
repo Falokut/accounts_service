@@ -38,7 +38,7 @@ func (e *accountsEvents) Shutdown() error {
 	return e.eventsWriter.Close()
 }
 
-func (e *accountsEvents) AccountCreated(ctx context.Context, account models.Account) (err error) {
+func (e *accountsEvents) AccountCreated(ctx context.Context, account models.AccountCreatedDTO) (err error) {
 	defer e.handleError(ctx, &err)
 	defer e.logError(err, "AccountCreated")
 

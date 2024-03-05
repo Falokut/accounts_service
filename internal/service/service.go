@@ -18,16 +18,16 @@ import (
 
 type AccountsService interface {
 	CreateAccount(ctx context.Context, dto models.CreateAccountDTO) error
-	DeleteAccount(ctx context.Context, sessionId, machineId string) error
-	RequestAccountVerificationToken(ctx context.Context, email, callbackUrl string) error
+	DeleteAccount(ctx context.Context, sessionID, machineID string) error
+	RequestAccountVerificationToken(ctx context.Context, email, callbackURL string) error
 	VerifyAccount(ctx context.Context, token string) error
-	SignIn(ctx context.Context, dto models.SignInDTO) (sessionId string, err error)
-	GetAccountId(ctx context.Context, sessionId, machineId string) (accountId string, err error)
-	Logout(ctx context.Context, sessionId, machineId string) error
-	RequestChangePasswordToken(ctx context.Context, email, callbackUrl string) error
+	SignIn(ctx context.Context, dto models.SignInDTO) (sessionID string, err error)
+	GetAccountId(ctx context.Context, sessionID, machineID string) (accountID string, err error)
+	Logout(ctx context.Context, sessionID, machineID string) error
+	RequestChangePasswordToken(ctx context.Context, email, callbackURL string) error
 	ChangePassword(ctx context.Context, token, newPassword string) error
-	GetAllSessions(ctx context.Context, sessionId, machineId string) (map[string]models.SessionInfo, error)
-	TerminateSessions(ctx context.Context, sessionId, machineId string, sessionsToTerminateIds []string) error
+	GetAllSessions(ctx context.Context, sessionID, machineID string) (map[string]models.SessionInfo, error)
+	TerminateSessions(ctx context.Context, sessionID, machineID string, sessionsToTerminateIds []string) error
 }
 
 type AccountsServiceConfig struct {
@@ -76,29 +76,26 @@ func (s *accountsService) CreateAccount(ctx context.Context,
 
 	exist, err := s.accountsRepository.IsAccountWithEmailExist(ctx, dto.Email)
 	if err != nil {
-		return
+		return err
 	}
 	if exist {
-		err = models.Error(models.Conflict, "a user with this email address already exists. "+
+		return models.Error(models.Conflict, "a user with this email address already exists. "+
 			"please try another one or simple log in")
-		return
 	}
 
 	inCache, err := s.registrationRepository.IsAccountExist(ctx, dto.Email)
 	if err != nil {
-		return
+		return err
 	}
 	if inCache {
-		err = models.Error(models.Conflict, "a user with this email address already exists. "+
+		return models.Error(models.Conflict, "a user with this email address already exists. "+
 			"please try another one or verify email and log in")
-		return
 	}
 
 	s.logger.Info("Generating hash from password")
 	password_hash, err := bcrypt.GenerateFromPassword([]byte(dto.Password), s.cfg.BcryptCost)
 	if err != nil {
-		err = models.Error(models.Internal, "can't generate password hash")
-		return
+		return models.Error(models.Internal, "can't generate password hash")
 	}
 
 	err = s.registrationRepository.SetAccount(ctx, dto.Email,
@@ -108,52 +105,42 @@ func (s *accountsService) CreateAccount(ctx context.Context,
 		},
 		s.cfg.NonActivatedAccountTTL)
 
-	if err != nil {
-		return
-	}
-
-	return
+	return err
 }
 
 func (s *accountsService) RequestAccountVerificationToken(ctx context.Context,
-	email, callbackUrl string) (err error) {
+	email, callbackURL string) (err error) {
 
 	exist, err := s.accountsRepository.IsAccountWithEmailExist(ctx, email)
 	if err != nil {
-		return
+		return err
 	}
 	if exist {
-		err = models.Error(models.InvalidArgument, "account already activated")
-		return
+		return models.Error(models.InvalidArgument, "account already activated")
 	}
 
 	inCache, err := s.registrationRepository.IsAccountExist(ctx, email)
 	if err != nil {
-		return
+		return err
 	}
 	if !inCache {
-		err = models.Error(models.NotFound, "a account with this email address not exist")
-		return
+		return models.Error(models.NotFound, "a account with this email address not exist")
 	}
 
 	token, err := jwt.GenerateToken(email, s.cfg.VerifyAccountTokenSecret, s.cfg.VerifyAccountTokenTTL)
 	if err != nil {
-		return
+		return err
 	}
 
-	err = s.tokenDeliveryMQ.RequestEmailVerificationTokenDelivery(ctx, email, token, callbackUrl, s.cfg.VerifyAccountTokenTTL)
-	if err != nil {
-		return
-	}
-	return
+	err = s.tokenDeliveryMQ.RequestEmailVerificationTokenDelivery(ctx, email, token, callbackURL, s.cfg.VerifyAccountTokenTTL)
+	return err
 }
 
 func (s *accountsService) VerifyAccount(ctx context.Context, token string) (err error) {
 	s.logger.Info("Parsing token")
 	email, err := jwt.ParseToken(token, config.GetConfig().JWT.VerifyAccountToken.Secret)
 	if err != nil {
-		err = models.Error(models.InvalidArgument, err.Error())
-		return
+		return models.Error(models.InvalidArgument, err.Error())
 	}
 
 	err = s.createAccount(ctx, email)
@@ -174,21 +161,23 @@ func (s *accountsService) createAccount(ctx context.Context, email string) (err 
 	}
 
 	s.logger.Info("Creating account")
-	tx, accountId, err := s.accountsRepository.CreateAccount(ctx, account)
+	tx, accountID, err := s.accountsRepository.CreateAccount(ctx, account)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
 
-	account.Password = ""
-	account.Id = accountId
-
-	err = s.accountEvents.AccountCreated(ctx, account)
+	err = tx.Commit()
 	if err != nil {
 		err = models.Error(models.Internal, err.Error())
 		return
 	}
-	err = tx.Commit()
+
+	err = s.accountEvents.AccountCreated(ctx, models.AccountCreatedDTO{
+		Id:               accountID,
+		Email:            account.Email,
+		RegistrationDate: account.RegistrationDate,
+		Username:         repoAccount.Username,
+	})
 	if err != nil {
 		err = models.Error(models.Internal, err.Error())
 		return
@@ -202,7 +191,7 @@ func (s *accountsService) createAccount(ctx context.Context, email string) (err 
 	return
 }
 
-func (s *accountsService) SignIn(ctx context.Context, dto models.SignInDTO) (sessionId string, err error) {
+func (s *accountsService) SignIn(ctx context.Context, dto models.SignInDTO) (sessionID string, err error) {
 	s.logger.Info("Getting account by email")
 	account, err := s.accountsRepository.GetAccountByEmail(ctx, dto.Email)
 	if err != nil {
@@ -216,9 +205,9 @@ func (s *accountsService) SignIn(ctx context.Context, dto models.SignInDTO) (ses
 	}
 
 	s.logger.Info("Caching session")
-	sessionId = uuid.NewString()
+	sessionID = uuid.NewString()
 	err = s.sessionsRepository.SetSession(ctx, models.Session{
-		SessionId:    sessionId,
+		SessionId:    sessionID,
 		AccountId:    account.Id,
 		MachineId:    dto.MachineId,
 		ClientIp:     dto.ClientIp,
@@ -231,33 +220,33 @@ func (s *accountsService) SignIn(ctx context.Context, dto models.SignInDTO) (ses
 }
 
 func (s *accountsService) GetAccountId(ctx context.Context,
-	sessionId, machineId string) (accountId string, err error) {
+	sessionID, machineID string) (accountID string, err error) {
 
 	s.logger.Info("Checking session")
-	cached, err := s.checkSession(ctx, machineId, sessionId)
+	cached, err := s.checkSession(ctx, machineID, sessionID)
 	if err != nil {
 		return
 	}
 
-	accountId = cached.AccountId
+	accountID = cached.AccountId
 	return
 }
 
 func (s *accountsService) Logout(ctx context.Context,
-	sessionId, machineId string) (err error) {
+	sessionID, machineID string) (err error) {
 
 	s.logger.Info("Checking session")
-	session, err := s.checkSession(ctx, machineId, sessionId)
+	session, err := s.checkSession(ctx, machineID, sessionID)
 	if err != nil {
 		return
 	}
 
-	err = s.sessionsRepository.TerminateSessions(ctx, []string{sessionId}, session.AccountId)
+	err = s.sessionsRepository.TerminateSessions(ctx, []string{sessionID}, session.AccountId)
 	return
 }
 
 func (s *accountsService) RequestChangePasswordToken(ctx context.Context,
-	email, callbackUrl string) (err error) {
+	email, callbackURL string) (err error) {
 
 	exist, err := s.accountsRepository.IsAccountWithEmailExist(ctx, email)
 	if err != nil {
@@ -275,7 +264,7 @@ func (s *accountsService) RequestChangePasswordToken(ctx context.Context,
 		return
 	}
 
-	err = s.tokenDeliveryMQ.RequestChangePasswordTokenDelivery(ctx, email, token, callbackUrl, s.cfg.ChangePasswordTokenTTL)
+	err = s.tokenDeliveryMQ.RequestChangePasswordTokenDelivery(ctx, email, token, callbackURL, s.cfg.ChangePasswordTokenTTL)
 	return
 }
 
@@ -314,10 +303,10 @@ func (s *accountsService) ChangePassword(ctx context.Context, token, newPassword
 }
 
 func (s *accountsService) GetAllSessions(ctx context.Context,
-	sessionId, machineId string) (sessions map[string]models.SessionInfo, err error) {
+	sessionID, machineID string) (sessions map[string]models.SessionInfo, err error) {
 
 	s.logger.Info("Checking session")
-	cache, err := s.checkSession(ctx, machineId, sessionId)
+	cache, err := s.checkSession(ctx, machineID, sessionID)
 	if err != nil {
 		return
 	}
@@ -331,10 +320,10 @@ func (s *accountsService) GetAllSessions(ctx context.Context,
 }
 
 func (s *accountsService) TerminateSessions(ctx context.Context,
-	sessionId, machineId string, sessionsToTerminateIds []string) (err error) {
+	sessionID, machineID string, sessionsToTerminateIds []string) (err error) {
 
 	s.logger.Info("Checking session")
-	cache, err := s.checkSession(ctx, machineId, sessionId)
+	cache, err := s.checkSession(ctx, machineID, sessionID)
 	if err != nil {
 		return
 	}
@@ -347,8 +336,8 @@ func (s *accountsService) TerminateSessions(ctx context.Context,
 	return
 }
 
-func (s *accountsService) DeleteAccount(ctx context.Context, sessionId, machineId string) (err error) {
-	cache, err := s.checkSession(ctx, machineId, sessionId)
+func (s *accountsService) DeleteAccount(ctx context.Context, sessionID, machineID string) (err error) {
+	cache, err := s.checkSession(ctx, machineID, sessionID)
 	if err != nil {
 		return
 	}
@@ -357,7 +346,7 @@ func (s *accountsService) DeleteAccount(ctx context.Context, sessionId, machineI
 	if err != nil {
 		return
 	}
-	
+
 	tx, err := s.accountsRepository.DeleteAccount(ctx, cache.AccountId)
 	if err != nil {
 		return
@@ -367,7 +356,10 @@ func (s *accountsService) DeleteAccount(ctx context.Context, sessionId, machineI
 	if err != nil {
 		return
 	}
-	tx.Commit()
+	err = tx.Commit()
+	if err != nil {
+		return
+	}
 
 	go func() {
 		for i := uint32(0); i < s.cfg.NumRetriesForTerminateSessions; i++ {
@@ -384,14 +376,14 @@ func (s *accountsService) DeleteAccount(ctx context.Context, sessionId, machineI
 }
 
 // Also updates last activity time at background
-func (s *accountsService) checkSession(ctx context.Context, machineId, sessionId string) (session models.Session, err error) {
+func (s *accountsService) checkSession(ctx context.Context, machineID, sessionID string) (session models.Session, err error) {
 	s.logger.Info("Getting session cache")
-	session, err = s.sessionsRepository.GetSession(ctx, sessionId)
+	session, err = s.sessionsRepository.GetSession(ctx, sessionID)
 	if err != nil {
 		return
 	}
 
-	if machineId != session.MachineId {
+	if machineID != session.MachineId {
 		err = models.Error(models.Unauthenticated, "invalid session or machine id")
 		session = models.Session{}
 		return

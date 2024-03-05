@@ -12,7 +12,7 @@ type KafkaConfig struct {
 }
 
 type AccountsEventsMQ interface {
-	AccountCreated(ctx context.Context, account models.Account) error
+	AccountCreated(ctx context.Context, account models.AccountCreatedDTO) error
 	AccountDeleted(ctx context.Context, email, accountId string) error
 }
 
