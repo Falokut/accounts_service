@@ -86,55 +86,58 @@ func (h *AccountsServiceHandler) SignIn(ctx context.Context,
 		return nil, status.Error(codes.InvalidArgument, "invalid client ip address")
 	}
 
-	machineID, err := h.getMachineIdFromCtx(ctx)
+	machineID, err := h.getMachineIDFromCtx(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	sessionId, err := h.accountsService.SignIn(ctx, models.SignInDTO{
+	sessionID, err := h.accountsService.SignIn(ctx, models.SignInDTO{
 		Email:     in.Email,
 		Password:  in.Password,
-		ClientIp:  in.ClientIp,
-		MachineId: machineID,
+		ClientIP:  in.ClientIp,
+		MachineID: machineID,
 	})
 
 	if err != nil {
 		return
 	}
 
-	return &accounts_service.AccessResponse{SessionID: sessionId}, nil
+	return &accounts_service.AccessResponse{SessionID: sessionID}, nil
 }
 
-func (h *AccountsServiceHandler) GetAccountId(ctx context.Context,
-	in *emptypb.Empty) (res *emptypb.Empty, err error) {
+func (h *AccountsServiceHandler) GetAccountID(ctx context.Context,
+	_ *emptypb.Empty) (res *emptypb.Empty, err error) {
 	defer h.handleError(&err)
 
-	sessionId, machineId, err := h.getAuthHeaders(ctx)
+	sessionID, machineID, err := h.getAuthHeaders(ctx)
 	if err != nil {
 		return
 	}
 
-	accountId, err := h.accountsService.GetAccountId(ctx, sessionId, machineId)
+	accountID, err := h.accountsService.GetAccountID(ctx, sessionID, machineID)
 	if err != nil {
 		return
 	}
 
-	header := metadata.Pairs(AccountIdContext, accountId)
-	grpc.SetHeader(ctx, header)
+	header := metadata.Pairs(AccountIDContext, accountID)
+	err = grpc.SetHeader(ctx, header)
+	if err != nil {
+		return
+	}
 
 	return &emptypb.Empty{}, nil
 }
 
 func (h *AccountsServiceHandler) Logout(ctx context.Context,
-	in *emptypb.Empty) (res *emptypb.Empty, err error) {
+	_ *emptypb.Empty) (res *emptypb.Empty, err error) {
 	defer h.handleError(&err)
 
-	sessionId, machineId, err := h.getAuthHeaders(ctx)
+	sessionID, machineID, err := h.getAuthHeaders(ctx)
 	if err != nil {
 		return
 	}
 
-	err = h.accountsService.Logout(ctx, sessionId, machineId)
+	err = h.accountsService.Logout(ctx, sessionID, machineID)
 	if err != nil {
 		return
 	}
@@ -173,20 +176,20 @@ func (h *AccountsServiceHandler) ChangePassword(ctx context.Context,
 }
 
 func (h *AccountsServiceHandler) GetAllSessions(ctx context.Context,
-	in *emptypb.Empty) (res *accounts_service.AllSessionsResponse, err error) {
+	_ *emptypb.Empty) (res *accounts_service.AllSessionsResponse, err error) {
 	defer h.handleError(&err)
 
-	sessionId, machineId, err := h.getAuthHeaders(ctx)
+	sessionID, machineID, err := h.getAuthHeaders(ctx)
 	if err != nil {
 		return
 	}
 
-	sessions, err := h.accountsService.GetAllSessions(ctx, sessionId, machineId)
+	sessions, err := h.accountsService.GetAllSessions(ctx, sessionID, machineID)
 	sessionsInfo := make(map[string]*accounts_service.SessionInfo, len(sessions))
 	for key, info := range sessions {
 		sessionsInfo[key] = &accounts_service.SessionInfo{
-			ClientIp:     info.ClientIp,
-			MachineId:    info.MachineId,
+			ClientIp:     info.ClientIP,
+			MachineId:    info.MachineID,
 			LastActivity: timestamppb.New(info.LastActivity.UTC()),
 		}
 	}
@@ -198,11 +201,11 @@ func (h *AccountsServiceHandler) TerminateSessions(ctx context.Context,
 	in *accounts_service.TerminateSessionsRequest) (res *emptypb.Empty, err error) {
 	defer h.handleError(&err)
 
-	sessionId, machineId, err := h.getAuthHeaders(ctx)
+	sessionID, machineID, err := h.getAuthHeaders(ctx)
 	if err != nil {
 		return
 	}
-	err = h.accountsService.TerminateSessions(ctx, sessionId, machineId, in.SessionsToTerminate)
+	err = h.accountsService.TerminateSessions(ctx, sessionID, machineID, in.SessionsToTerminate)
 	if err != nil {
 		return
 	}
@@ -211,15 +214,15 @@ func (h *AccountsServiceHandler) TerminateSessions(ctx context.Context,
 }
 
 func (h *AccountsServiceHandler) DeleteAccount(ctx context.Context,
-	in *emptypb.Empty) (res *emptypb.Empty, err error) {
+	_ *emptypb.Empty) (res *emptypb.Empty, err error) {
 	defer h.handleError(&err)
 
-	sessionId, machineId, err := h.getAuthHeaders(ctx)
+	sessionID, machineID, err := h.getAuthHeaders(ctx)
 	if err != nil {
 		return
 	}
 
-	err = h.accountsService.DeleteAccount(ctx, sessionId, machineId)
+	err = h.accountsService.DeleteAccount(ctx, sessionID, machineID)
 	if err != nil {
 		return
 	}
@@ -227,14 +230,14 @@ func (h *AccountsServiceHandler) DeleteAccount(ctx context.Context,
 	return &emptypb.Empty{}, nil
 }
 
-func (h *AccountsServiceHandler) getAuthHeaders(ctx context.Context) (sessionId, machineId string, err error) {
-	sessionId, err = h.getSessionIdFromCtx(ctx)
+func (h *AccountsServiceHandler) getAuthHeaders(ctx context.Context) (sessionID, machineID string, err error) {
+	sessionID, err = h.getSessionIDFromCtx(ctx)
 	if err != nil {
 		return
 	}
 
 	h.logger.Info("Getting client ip from ctx")
-	machineId, err = h.getMachineIdFromCtx(ctx)
+	machineID, err = h.getMachineIDFromCtx(ctx)
 	if err != nil {
 		return
 	}
@@ -244,20 +247,20 @@ func (h *AccountsServiceHandler) getAuthHeaders(ctx context.Context) (sessionId,
 
 // --------------------- CONTEXTS ---------------------
 const (
-	AccountIdContext = "X-Account-Id"
-	SessionIdContext = "X-Session-Id"
-	MachineIdContext = "X-Machine-Id"
+	AccountIDContext = "X-Account-Id"
+	SessionIDContext = "X-Session-Id"
+	MachineIDContext = "X-Machine-Id"
 )
 
 //-----------------------------------------------------
 
-func (h *AccountsServiceHandler) getSessionIdFromCtx(ctx context.Context) (string, error) {
+func (h *AccountsServiceHandler) getSessionIDFromCtx(ctx context.Context) (string, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return "", status.Error(codes.Unauthenticated, "no context metadata provided")
 	}
 
-	sessionID := md.Get(SessionIdContext)
+	sessionID := md.Get(SessionIDContext)
 	if len(sessionID) == 0 || sessionID[0] == "" {
 		return "", status.Error(codes.Unauthenticated, "no session id provided")
 	}
@@ -265,13 +268,13 @@ func (h *AccountsServiceHandler) getSessionIdFromCtx(ctx context.Context) (strin
 	return sessionID[0], nil
 }
 
-func (h *AccountsServiceHandler) getMachineIdFromCtx(ctx context.Context) (string, error) {
+func (h *AccountsServiceHandler) getMachineIDFromCtx(ctx context.Context) (string, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return "", status.Error(codes.Unauthenticated, "no context metadata provided")
 	}
 
-	machineID := md.Get(MachineIdContext)
+	machineID := md.Get(MachineIDContext)
 	if len(machineID) == 0 || machineID[0] == "" {
 		return "", status.Error(codes.Unauthenticated, "no machine id provided")
 	}

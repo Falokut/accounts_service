@@ -23,7 +23,7 @@ type AccountsRepository struct {
 }
 
 // NewPostgreDB creates a new connection to the PostgreSQL database.
-func NewPostgreDB(cfg repository.DBConfig) (*sqlx.DB, error) {
+func NewPostgreDB(cfg *repository.DBConfig) (*sqlx.DB, error) {
 	db, err := sqlx.Connect("pgx", fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		cfg.Host, cfg.Port, cfg.Username, cfg.Password, cfg.DBName, cfg.SSLMode))
 
@@ -36,11 +36,15 @@ func NewAccountsRepository(db *sqlx.DB, logger *logrus.Logger) *AccountsReposito
 }
 
 // Shutdown closes the database connection.
-func (r *AccountsRepository) Shutdown() error {
-	return r.db.Close()
+func (r *AccountsRepository) Shutdown() {
+	r.logger.Info("Acounts repository shutting down")
+
+	err := r.db.Close()
+	if err != nil {
+		r.logger.Errorf("error while shutting down accounts repository %v", err)
+	}
 }
 
-// Shutdown closes the database connection.
 func (r *AccountsRepository) PingContext(ctx context.Context) error {
 	return r.db.PingContext(ctx)
 }
@@ -51,7 +55,7 @@ func (r *AccountsRepository) CreateAccount(ctx context.Context,
 	defer r.handleError(ctx, &err, "CreateAccount")
 
 	query := fmt.Sprintf(`INSERT INTO %s (email, password_hash, registration_date)
-	VALUES ($1, $2, $3) RETURNING id;`, accountTableName)
+        VALUES ($1, $2, $3) RETURNING id;`, accountTableName)
 	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return
@@ -59,7 +63,7 @@ func (r *AccountsRepository) CreateAccount(ctx context.Context,
 
 	row := tx.QueryRowContext(ctx, query, account.Email, account.Password, account.RegistrationDate)
 	if err = row.Scan(&id); err != nil {
-		tx.Rollback()
+		err = tx.Rollback()
 		return
 	}
 
@@ -97,7 +101,7 @@ func (r *AccountsRepository) GetAccountByEmail(ctx context.Context, email string
 
 // ChangePassword updates the password hash of an account with the given email in the database.
 // It takes the email and the new password hash as input and returns an error, if any.
-func (r *AccountsRepository) ChangePassword(ctx context.Context, email string, passwordHash string) (err error) {
+func (r *AccountsRepository) ChangePassword(ctx context.Context, email, passwordHash string) (err error) {
 	defer r.handleError(ctx, &err, "ChangePassword")
 
 	query := fmt.Sprintf("UPDATE %s SET password_hash=$1 WHERE email=$2;", accountTableName)
@@ -118,7 +122,7 @@ func (r *AccountsRepository) ChangePassword(ctx context.Context, email string, p
 
 // DeleteAccount deletes the account with the given ID from the database.
 // It takes the ID of the account as input and returns an error, if any.
-func (r *AccountsRepository) DeleteAccount(ctx context.Context, accountId string) (restx repository.Transaction, err error) {
+func (r *AccountsRepository) DeleteAccount(ctx context.Context, accountID string) (restx repository.Transaction, err error) {
 	defer r.handleError(ctx, &err, "DeleteAccount")
 
 	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
@@ -127,19 +131,19 @@ func (r *AccountsRepository) DeleteAccount(ctx context.Context, accountId string
 	}
 	query := fmt.Sprintf("DELETE FROM %s WHERE id=$1", accountTableName)
 
-	_, err = tx.ExecContext(ctx, query, accountId)
+	_, err = tx.ExecContext(ctx, query, accountID)
 	if err != nil {
-		tx.Rollback()
+		err = tx.Rollback()
 		return
 	}
 	return tx, nil
 }
 
-func (r *AccountsRepository) GetAccountEmail(ctx context.Context, accountId string) (email string, err error) {
+func (r *AccountsRepository) GetAccountEmail(ctx context.Context, accountID string) (email string, err error) {
 	defer r.handleError(ctx, &err, "GetAccountEmail")
 
 	query := fmt.Sprintf("SELECT email FROM %s WHERE id=$1", accountTableName)
-	err = r.db.GetContext(ctx, &email, query, accountId)
+	err = r.db.GetContext(ctx, &email, query, accountID)
 	if err != nil {
 		return
 	}

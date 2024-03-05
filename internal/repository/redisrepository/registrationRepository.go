@@ -29,17 +29,10 @@ func (r *RegistrationRepository) PingContext(ctx context.Context) error {
 // NewRedisRegistrationRepository initializes a new instance of RegistrationRepository with the provided options and logger.
 func NewRedisRegistrationRepository(opt *redis.Options, logger *logrus.Logger, metrics Metrics) (*RegistrationRepository, error) {
 	logger.Info("Creating registration repository client")
-	rdb := redis.NewClient(opt)
-	if rdb == nil {
-		return nil, errors.New("can't create new redis client")
-	}
-
-	logger.Info("Pinging registration repository client")
-	_, err := rdb.Ping(context.Background()).Result()
+	rdb, err := NewRedisClient(opt)
 	if err != nil {
-		return nil, fmt.Errorf("connection is not established: %s", err.Error())
+		return nil, err
 	}
-
 	return &RegistrationRepository{
 		rdb:     rdb,
 		logger:  logger,
@@ -47,10 +40,13 @@ func NewRedisRegistrationRepository(opt *redis.Options, logger *logrus.Logger, m
 	}, nil
 }
 
-// Shutdown gracefully shuts down the registration repository repository.
-func (r *RegistrationRepository) Shutdown() error {
-	r.logger.Info("Registration repository repository shutting down")
-	return r.rdb.Close()
+// Shutdown gracefully shuts down the registration repository.
+func (r *RegistrationRepository) Shutdown() {
+	r.logger.Info("Registration repository shutting down")
+	err := r.rdb.Close()
+	if err != nil {
+		r.logger.Errorf("error while shutting down registration repository %v", err)
+	}
 }
 
 // IsAccountExist checks if the provided email account is present in the repository.
@@ -74,7 +70,7 @@ func (r *RegistrationRepository) SetAccount(ctx context.Context,
 	defer handleError(ctx, &err)
 	defer r.logError(err, "SetAccount")
 
-	r.logger.Info("Marshalling data")
+	r.logger.Info("Marshaling data")
 	serialized, err := json.Marshal(&account)
 	if err != nil {
 		return
@@ -109,14 +105,14 @@ func (r *RegistrationRepository) DeleteAccount(ctx context.Context, email string
 	return
 }
 
-func (c *RegistrationRepository) logError(err error, functionName string) {
+func (r *RegistrationRepository) logError(err error, functionName string) {
 	if err == nil {
 		return
 	}
 
 	var repoErr = &models.ServiceError{}
 	if errors.As(err, &repoErr) {
-		c.logger.WithFields(
+		r.logger.WithFields(
 			logrus.Fields{
 				"error.function.name": functionName,
 				"error.msg":           repoErr.Msg,
@@ -124,7 +120,7 @@ func (c *RegistrationRepository) logError(err error, functionName string) {
 			},
 		).Error("registration repository error occurred")
 	} else {
-		c.logger.WithFields(
+		r.logger.WithFields(
 			logrus.Fields{
 				"error.function.name": functionName,
 				"error.msg":           err.Error(),
@@ -133,12 +129,12 @@ func (c *RegistrationRepository) logError(err error, functionName string) {
 	}
 }
 
-func (c *RegistrationRepository) updateMetrics(err error, functionName string) {
+func (r *RegistrationRepository) updateMetrics(err error, functionName string) {
 	if err == nil {
-		c.metrics.IncCacheHits(functionName)
+		r.metrics.IncCacheHits(functionName)
 		return
 	}
 	if models.Code(err) == models.NotFound {
-		c.metrics.IncCacheMiss(functionName)
+		r.metrics.IncCacheMiss(functionName)
 	}
 }

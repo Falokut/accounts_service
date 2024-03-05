@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -116,7 +117,8 @@ func RunMetricServer(cfg MetricsServerConfig) error {
 
 	mux.Handle("/metrics", promhttp.Handler())
 
-	return http.Serve(lis, mux)
+	srv := &http.Server{Handler: http.Handler(mux), ReadHeaderTimeout: time.Second * 5}
+	return srv.Serve(lis)
 }
 func (metr *PrometheusMetrics) IncHits(status int, method, path string) {
 	metr.HitsTotal.Inc()

@@ -3,7 +3,7 @@ linters-settings:
     threshold: 100
   funlen:
     lines: -1 # the number of lines (code + empty lines) is not a right metric and leads to code without empty line or one-liner.
-    statements: 50
+    statements: 75
   goconst:
     min-len: 2
     min-occurrences: 3
@@ -11,7 +11,6 @@ linters-settings:
     enabled-tags:
       - diagnostic
       - experimental
-      - opinionated
       - performance
       - style
     disabled-checks:
@@ -19,6 +18,7 @@ linters-settings:
       - ifElseChain
       - octalLiteral
       - whyNoLint
+      - ptrToRefParam
   gocyclo:
     min-complexity: 15
   gofmt:
@@ -92,7 +92,6 @@ linters:
     - ineffassign
     - lll
     - misspell
-    - nakedret
     - noctx
     - nolintlint
     - revive

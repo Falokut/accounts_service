@@ -21,9 +21,9 @@ func NewTokensDeliveryMQ(cfg KafkaConfig, logger *logrus.Logger) *tokensDelivery
 		Addr:                   kafka.TCP(cfg.Brokers...),
 		Logger:                 logger,
 		AllowAutoTopicCreation: true,
-		BatchSize:    1,
-		BatchTimeout: 10 * time.Millisecond,
-		Balancer:     &kafka.LeastBytes{},
+		BatchSize:              1,
+		BatchTimeout:           10 * time.Millisecond,
+		Balancer:               &kafka.LeastBytes{},
 	}
 	return &tokensDeliveryMQ{eventsWriter: w, logger: logger}
 }
@@ -36,20 +36,20 @@ const (
 type tokenDeviveryRequest struct {
 	Email          string        `json:"email"`
 	Token          string        `json:"token"`
-	CallbackUrl    string        `json:"callback_url"`
-	CallbackUrlTtl time.Duration `json:"callback_url_ttl"`
+	CallbackURL    string        `json:"callback_url"`
+	CallbackURLTTL time.Duration `json:"callback_url_ttl"`
 }
 
 func (e *tokensDeliveryMQ) RequestEmailVerificationTokenDelivery(ctx context.Context,
-	email, token, callbackUrl string, callbackUrlTtl time.Duration) (err error) {
+	email, token, callbackURL string, callbackURLTtl time.Duration) (err error) {
 	defer e.handleError(ctx, &err)
 	defer e.logError(err, "RequestEmailVerificationTokenDelivery")
 
 	body, err := json.Marshal(tokenDeviveryRequest{
 		Email:          email,
 		Token:          token,
-		CallbackUrl:    callbackUrl,
-		CallbackUrlTtl: callbackUrlTtl,
+		CallbackURL:    callbackURL,
+		CallbackURLTTL: callbackURLTtl,
 	})
 	if err != nil {
 		e.logger.Panic(err)
@@ -65,15 +65,15 @@ func (e *tokensDeliveryMQ) RequestEmailVerificationTokenDelivery(ctx context.Con
 }
 
 func (e *tokensDeliveryMQ) RequestChangePasswordTokenDelivery(ctx context.Context,
-	email, token, callbackUrl string, callbackUrlTtl time.Duration) (err error) {
+	email, token, callbackURL string, callbackURLTtl time.Duration) (err error) {
 	defer e.handleError(ctx, &err)
 	defer e.logError(err, "RequestChangePasswordTokenDelivery")
 
 	body, err := json.Marshal(tokenDeviveryRequest{
 		Email:          email,
 		Token:          token,
-		CallbackUrl:    callbackUrl,
-		CallbackUrlTtl: callbackUrlTtl,
+		CallbackURL:    callbackURL,
+		CallbackURLTTL: callbackURLTtl,
 	})
 	if err != nil {
 		e.logger.Panic(err)
@@ -89,8 +89,13 @@ func (e *tokensDeliveryMQ) RequestChangePasswordTokenDelivery(ctx context.Contex
 	return
 }
 
-func (e *tokensDeliveryMQ) Shutdown() error {
-	return e.eventsWriter.Close()
+func (e *tokensDeliveryMQ) Shutdown() {
+	e.logger.Info("tokens delivery mq shutting down")
+
+	err := e.eventsWriter.Close()
+	if err != nil {
+		e.logger.Errorf("error while shutting down tokens delivery mq %v", err)
+	}
 }
 
 func (e *tokensDeliveryMQ) logError(err error, functionName string) {
@@ -118,15 +123,9 @@ func (e *tokensDeliveryMQ) logError(err error, functionName string) {
 }
 
 func (e *tokensDeliveryMQ) handleError(ctx context.Context, err *error) {
-	if ctx.Err() != nil {
-		var code models.ErrorCode
-		switch {
-		case errors.Is(ctx.Err(), context.Canceled):
-			code = models.Canceled
-		case errors.Is(ctx.Err(), context.DeadlineExceeded):
-			code = models.DeadlineExceeded
-		}
-		*err = models.Error(code, ctx.Err().Error())
+	ctxErr := getContextError(ctx)
+	if ctxErr != nil {
+		*err = ctxErr
 		return
 	}
 

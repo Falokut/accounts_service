@@ -22,9 +22,9 @@ func NewAccountsEvents(cfg KafkaConfig, logger *logrus.Logger) *accountsEvents {
 		Addr:                   kafka.TCP(cfg.Brokers...),
 		Logger:                 logger,
 		AllowAutoTopicCreation: true,
-		BatchSize:    1,
-		BatchTimeout: 10 * time.Millisecond,
-		Balancer:     &kafka.LeastBytes{},
+		BatchSize:              1,
+		BatchTimeout:           10 * time.Millisecond,
+		Balancer:               &kafka.LeastBytes{},
 	}
 	return &accountsEvents{eventsWriter: w, logger: logger}
 }
@@ -34,8 +34,13 @@ const (
 	accountDeletedTopic = "account_deleted"
 )
 
-func (e *accountsEvents) Shutdown() error {
-	return e.eventsWriter.Close()
+func (e *accountsEvents) Shutdown() {
+	e.logger.Info("accounts events shutting down")
+
+	err := e.eventsWriter.Close()
+	if err != nil {
+		e.logger.Errorf("error while shutting down accounts events %v", err)
+	}
 }
 
 func (e *accountsEvents) AccountCreated(ctx context.Context, account models.AccountCreatedDTO) (err error) {
@@ -50,23 +55,23 @@ func (e *accountsEvents) AccountCreated(ctx context.Context, account models.Acco
 
 	err = e.eventsWriter.WriteMessages(ctx, kafka.Message{
 		Topic: accountCreatedTopic,
-		Key:   []byte(fmt.Sprint("account_", account.Id)),
+		Key:   []byte(fmt.Sprint("account_", account.ID)),
 		Value: body,
 	})
 
 	return
 }
 
-func (e *accountsEvents) AccountDeleted(ctx context.Context, email, accountId string) (err error) {
+func (e *accountsEvents) AccountDeleted(ctx context.Context, email, accountID string) (err error) {
 	defer e.handleError(ctx, &err)
 	defer e.logError(err, "AccountDeleted")
 
 	body, err := json.Marshal(struct {
 		Email     string `json:"email"`
-		AccountId string `json:"account_id"`
+		AccountID string `json:"account_id"`
 	}{
 		Email:     email,
-		AccountId: accountId,
+		AccountID: accountID,
 	})
 	if err != nil {
 		e.logger.Panic(err)
@@ -75,7 +80,7 @@ func (e *accountsEvents) AccountDeleted(ctx context.Context, email, accountId st
 
 	err = e.eventsWriter.WriteMessages(ctx, kafka.Message{
 		Topic: accountDeletedTopic,
-		Key:   []byte(fmt.Sprint("account_", accountId)),
+		Key:   []byte(fmt.Sprint("account_", accountID)),
 		Value: body,
 	})
 
@@ -83,15 +88,9 @@ func (e *accountsEvents) AccountDeleted(ctx context.Context, email, accountId st
 }
 
 func (e *accountsEvents) handleError(ctx context.Context, err *error) {
-	if ctx.Err() != nil {
-		var code models.ErrorCode
-		switch {
-		case errors.Is(ctx.Err(), context.Canceled):
-			code = models.Canceled
-		case errors.Is(ctx.Err(), context.DeadlineExceeded):
-			code = models.DeadlineExceeded
-		}
-		*err = models.Error(code, ctx.Err().Error())
+	ctxErr := getContextError(ctx)
+	if ctxErr != nil {
+		*err = ctxErr
 		return
 	}
 

@@ -56,7 +56,7 @@ func main() {
 	shutdown := make(chan error, 1)
 	go func() {
 		logger.Info("Metrics server running")
-		if err := metrics.RunMetricServer(cfg.PrometheusConfig.ServerConfig); err != nil {
+		if err = metrics.RunMetricServer(cfg.PrometheusConfig.ServerConfig); err != nil {
 			logger.Errorf("Shutting down, error while running metrics server %v", err)
 			shutdown <- err
 			return
@@ -96,15 +96,15 @@ func main() {
 	defer sessionsRepository.Shutdown()
 
 	logger.Info("Database initializing")
-	database, err := postgresrepository.NewPostgreDB(cfg.DBConfig)
+	database, err := postgresrepository.NewPostgreDB(&cfg.DBConfig)
 	if err != nil {
 		logger.Errorf("Shutting down, connection to the database is not established: %s", err.Error())
 		return
 	}
-	defer database.Close()
 
 	logger.Info("Repository initializing")
 	repo := postgresrepository.NewAccountsRepository(database, logger.Logger)
+	defer repo.Shutdown()
 
 	accountsEventsMQ := events.NewAccountsEvents(events.KafkaConfig{
 		Brokers: cfg.AccountEventsConfig.Brokers,
@@ -116,7 +116,6 @@ func main() {
 	}, logger.Logger)
 	defer accountsEventsMQ.Shutdown()
 
-	logger.Info("Healthcheck initializing")
 	go func() {
 		logger.Info("Healthcheck initializing")
 		healthcheckManager := healthcheck.NewHealthManager(logger.Logger,
@@ -127,29 +126,18 @@ func main() {
 			return
 		}
 	}()
-	logger.Info("Healthcheck initialized")
 
 	logger.Info("Service initializing")
-	service := service.NewAccountsService(repo,
+	s := service.NewAccountsService(repo,
 		logger.Logger, registrationRepository, sessionsRepository, accountsEventsMQ, tokenDeliveryMQ,
-		service.AccountsServiceConfig{
-			ChangePasswordTokenTTL:             cfg.JWT.ChangePasswordToken.TTL,
-			ChangePasswordTokenSecret:          cfg.JWT.ChangePasswordToken.Secret,
-			VerifyAccountTokenTTL:              cfg.JWT.VerifyAccountToken.TTL,
-			VerifyAccountTokenSecret:           cfg.JWT.VerifyAccountToken.Secret,
-			NumRetriesForTerminateSessions:     cfg.NumRetriesForTerminateSessions,
-			RetrySleepTimeForTerminateSessions: cfg.RetrySleepTimeForTerminateSessions,
-			NonActivatedAccountTTL:             cfg.NonActivatedAccountTTL,
-			BcryptCost:                         cfg.Crypto.BcryptCost,
-			SessionTTL:                         cfg.SessionsTTL,
-		})
+		getAccountServiceConfig(cfg))
 
-	handler := handler.NewAccountsServiceHandler(logger.Logger, service)
+	h := handler.NewAccountsServiceHandler(logger.Logger, s)
 
 	logger.Info("Server initializing")
-	s := server.NewServer(logger.Logger, handler)
+	serv := server.NewServer(logger.Logger, h)
 	go func() {
-		if err := s.Run(getListenServerConfig(cfg), metric, nil, nil); err != nil {
+		if err := serv.Run(getListenServerConfig(cfg), metric, nil, nil); err != nil {
 			logger.Errorf("Shutting down, error while running server %s", err.Error())
 			shutdown <- err
 			return
@@ -166,7 +154,7 @@ func main() {
 		break
 	}
 
-	s.Shutdown()
+	serv.Shutdown()
 }
 
 func getListenServerConfig(cfg *config.Config) server.Config {
@@ -177,7 +165,7 @@ func getListenServerConfig(cfg *config.Config) server.Config {
 		AllowedHeaders:         cfg.Listen.AllowedHeaders,
 		AllowedOutgoingHeaders: cfg.Listen.AllowedOutgoingHeaders,
 		ServiceDesc:            &accounts_service.AccountsServiceV1_ServiceDesc,
-		RegisterRestHandlerServer: func(ctx context.Context, mux *runtime.ServeMux, service any) error {
+		RegisterRestHandlerServer: func(_ context.Context, mux *runtime.ServeMux, service any) error {
 			serv, ok := service.(accounts_service.AccountsServiceV1Server)
 			if !ok {
 				return errors.New("can't convert")
@@ -185,5 +173,19 @@ func getListenServerConfig(cfg *config.Config) server.Config {
 			return accounts_service.RegisterAccountsServiceV1HandlerServer(context.Background(),
 				mux, serv)
 		},
+	}
+}
+
+func getAccountServiceConfig(cfg *config.Config) *service.AccountsServiceConfig {
+	return &service.AccountsServiceConfig{
+		ChangePasswordTokenTTL:             cfg.JWT.ChangePasswordToken.TTL,
+		ChangePasswordTokenSecret:          cfg.JWT.ChangePasswordToken.Secret,
+		VerifyAccountTokenTTL:              cfg.JWT.VerifyAccountToken.TTL,
+		VerifyAccountTokenSecret:           cfg.JWT.VerifyAccountToken.Secret,
+		NumRetriesForTerminateSessions:     cfg.NumRetriesForTerminateSessions,
+		RetrySleepTimeForTerminateSessions: cfg.RetrySleepTimeForTerminateSessions,
+		NonActivatedAccountTTL:             cfg.NonActivatedAccountTTL,
+		BcryptCost:                         cfg.Crypto.BcryptCost,
+		SessionTTL:                         cfg.SessionsTTL,
 	}
 }

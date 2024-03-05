@@ -8,7 +8,6 @@ import (
 )
 
 func validateSignupInput(input *accounts_service.CreateAccountRequest) error {
-
 	if input == nil {
 		return errors.New("request body not valid")
 	}

@@ -12,8 +12,8 @@ type Claims struct {
 	Value string `json:"value"`
 }
 
-func ParseToken(tokenstr string, secret string) (string, error) {
-	t, err := JWT.ParseWithClaims(tokenstr, &Claims{}, func(t *JWT.Token) (interface{}, error) {
+func ParseToken(tokenstr, secret string) (string, error) {
+	t, err := JWT.ParseWithClaims(tokenstr, &Claims{}, func(t *JWT.Token) (any, error) {
 		if _, ok := t.Method.(*JWT.SigningMethodHMAC); !ok {
 			return nil, errors.New("invalid signing method")
 		}
@@ -32,7 +32,7 @@ func ParseToken(tokenstr string, secret string) (string, error) {
 	return claims.Value, nil
 }
 
-func GenerateToken(value string, secret string, tokenTTL time.Duration) (string, error) {
+func GenerateToken(value, secret string, tokenTTL time.Duration) (string, error) {
 	registeredClaims := JWT.RegisteredClaims{
 		ExpiresAt: &JWT.NumericDate{Time: time.Now().Add(tokenTTL)},
 		IssuedAt:  &JWT.NumericDate{Time: time.Now()}}

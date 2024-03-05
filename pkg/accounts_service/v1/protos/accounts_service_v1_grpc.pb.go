@@ -28,7 +28,7 @@ type AccountsServiceV1Client interface {
 	RequestAccountVerificationToken(ctx context.Context, in *VerificationTokenRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	VerifyAccount(ctx context.Context, in *VerifyAccountRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	SignIn(ctx context.Context, in *SignInRequest, opts ...grpc.CallOption) (*AccessResponse, error)
-	GetAccountId(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	GetAccountID(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	Logout(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	RequestChangePasswordToken(ctx context.Context, in *ChangePasswordTokenRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ChangePassword(ctx context.Context, in *ChangePasswordRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -89,9 +89,9 @@ func (c *accountsServiceV1Client) SignIn(ctx context.Context, in *SignInRequest,
 	return out, nil
 }
 
-func (c *accountsServiceV1Client) GetAccountId(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *accountsServiceV1Client) GetAccountID(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/accounts_service.accountsServiceV1/GetAccountId", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/accounts_service.accountsServiceV1/GetAccountID", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +152,7 @@ type AccountsServiceV1Server interface {
 	RequestAccountVerificationToken(context.Context, *VerificationTokenRequest) (*emptypb.Empty, error)
 	VerifyAccount(context.Context, *VerifyAccountRequest) (*emptypb.Empty, error)
 	SignIn(context.Context, *SignInRequest) (*AccessResponse, error)
-	GetAccountId(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
+	GetAccountID(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
 	Logout(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
 	RequestChangePasswordToken(context.Context, *ChangePasswordTokenRequest) (*emptypb.Empty, error)
 	ChangePassword(context.Context, *ChangePasswordRequest) (*emptypb.Empty, error)
@@ -180,8 +180,8 @@ func (UnimplementedAccountsServiceV1Server) VerifyAccount(context.Context, *Veri
 func (UnimplementedAccountsServiceV1Server) SignIn(context.Context, *SignInRequest) (*AccessResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SignIn not implemented")
 }
-func (UnimplementedAccountsServiceV1Server) GetAccountId(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetAccountId not implemented")
+func (UnimplementedAccountsServiceV1Server) GetAccountID(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetAccountID not implemented")
 }
 func (UnimplementedAccountsServiceV1Server) Logout(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Logout not implemented")
@@ -301,20 +301,20 @@ func _AccountsServiceV1_SignIn_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
-func _AccountsServiceV1_GetAccountId_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _AccountsServiceV1_GetAccountID_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(AccountsServiceV1Server).GetAccountId(ctx, in)
+		return srv.(AccountsServiceV1Server).GetAccountID(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/accounts_service.accountsServiceV1/GetAccountId",
+		FullMethod: "/accounts_service.accountsServiceV1/GetAccountID",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AccountsServiceV1Server).GetAccountId(ctx, req.(*emptypb.Empty))
+		return srv.(AccountsServiceV1Server).GetAccountID(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -437,8 +437,8 @@ var AccountsServiceV1_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _AccountsServiceV1_SignIn_Handler,
 		},
 		{
-			MethodName: "GetAccountId",
-			Handler:    _AccountsServiceV1_GetAccountId_Handler,
+			MethodName: "GetAccountID",
+			Handler:    _AccountsServiceV1_GetAccountID_Handler,
 		},
 		{
 			MethodName: "Logout",

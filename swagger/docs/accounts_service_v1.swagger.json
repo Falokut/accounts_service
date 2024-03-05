@@ -90,7 +90,7 @@
     },
     "/v1/account-id": {
       "get": {
-        "operationId": "accountsServiceV1_GetAccountId",
+        "operationId": "accountsServiceV1_GetAccountID",
         "responses": {
           "200": {
             "description": "A successful response.",
@@ -157,53 +157,6 @@
       }
     },
     "/v1/change-password": {
-      "get": {
-        "operationId": "accountsServiceV1_RequestChangePasswordToken",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "type": "object",
-              "properties": {}
-            }
-          },
-          "404": {
-            "description": "Returned when account with specified email doesn't exist.",
-            "schema": {
-              "$ref": "#/definitions/googlerpcStatus"
-            }
-          },
-          "500": {
-            "description": "Something went wrong.",
-            "schema": {
-              "$ref": "#/definitions/googlerpcStatus"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "email",
-            "in": "query",
-            "required": false,
-            "type": "string"
-          },
-          {
-            "name": "url",
-            "in": "query",
-            "required": false,
-            "type": "string"
-          }
-        ],
-        "tags": [
-          "accountsServiceV1"
-        ]
-      },
       "post": {
         "operationId": "accountsServiceV1_ChangePassword",
         "responses": {
@@ -247,6 +200,55 @@
             "schema": {
               "$ref": "#/definitions/accounts_serviceChangePasswordRequest"
             }
+          }
+        ],
+        "tags": [
+          "accountsServiceV1"
+        ]
+      }
+    },
+    "/v1/change/password": {
+      "get": {
+        "operationId": "accountsServiceV1_RequestChangePasswordToken",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "type": "object",
+              "properties": {}
+            }
+          },
+          "404": {
+            "description": "Returned when account with specified email doesn't exist.",
+            "schema": {
+              "$ref": "#/definitions/googlerpcStatus"
+            }
+          },
+          "500": {
+            "description": "Something went wrong.",
+            "schema": {
+              "$ref": "#/definitions/googlerpcStatus"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "email",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "url",
+            "in": "query",
+            "required": false,
+            "type": "string"
           }
         ],
         "tags": [
@@ -582,7 +584,7 @@
             }
           },
           "404": {
-            "description": "Returned when session with specified id not found.",
+            "description": "Returned when account with specified email not found.",
             "schema": {
               "$ref": "#/definitions/googlerpcStatus"
             }

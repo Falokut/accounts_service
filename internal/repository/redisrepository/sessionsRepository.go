@@ -19,7 +19,7 @@ type SessionsRepository struct {
 	metrics Metrics
 }
 
-// NewSessionsRepository creates a new session database using the provided Redis options, logger, and session TTL.
+// NewSessionsRepository creates a new session repository using the provided Redis options, logger, and session TTL.
 // It initializes two Redis clients for session and account session caching, and verifies the connection to each Redis instance.
 func NewSessionsRepository(opt *redis.Options,
 	logger *logrus.Logger,
@@ -27,15 +27,9 @@ func NewSessionsRepository(opt *redis.Options,
 ) (*SessionsRepository, error) {
 	logger.Info("Creating session repository client")
 
-	rdb := redis.NewClient(opt)
-	if rdb == nil {
-		return nil, errors.New("can't create new redis client")
-	}
-
-	logger.Info("Pinging sessions database client")
-	_, err := rdb.Ping(context.Background()).Result()
+	rdb, err := NewRedisClient(opt)
 	if err != nil {
-		return nil, fmt.Errorf("connection is not established: %s", err.Error())
+		return nil, err
 	}
 
 	return &SessionsRepository{
@@ -45,12 +39,12 @@ func NewSessionsRepository(opt *redis.Options,
 	}, nil
 }
 
-func getKeyForAccountSessionsList(accountId string) string {
-	return "account_" + accountId
+func getKeyForAccountSessionsList(accountID string) string {
+	return "account_" + accountID
 }
 
 func (r *SessionsRepository) removeNonexistantKeys(ctx context.Context,
-	accountId string, keys []string) (existsKeys []string, err error) {
+	accountID string, keys []string) (existsKeys []string, err error) {
 	defer r.updateMetrics(err, "removeNonexistantKeys")
 	defer handleError(ctx, &err)
 	defer r.logError(err, "removeNonexistantKeys")
@@ -84,7 +78,7 @@ func (r *SessionsRepository) removeNonexistantKeys(ctx context.Context,
 		}
 	}
 
-	err = r.rdb.SRem(ctx, getKeyForAccountSessionsList(accountId), toRemove).Err()
+	err = r.rdb.SRem(ctx, getKeyForAccountSessionsList(accountID), toRemove).Err()
 	if err != nil {
 		return
 	}
@@ -95,38 +89,41 @@ func (r *SessionsRepository) removeNonexistantKeys(ctx context.Context,
 
 func (r *SessionsRepository) PingContext(ctx context.Context) error {
 	if err := r.rdb.Ping(ctx).Err(); err != nil {
-		return fmt.Errorf("error while pinging sessions database: %w", err)
+		return fmt.Errorf("error while pinging sessions repository: %w", err)
 	}
 	return nil
 }
 
-// Shutdown gracefully shuts down the sessions database repository by closing the Redis client for session caching.
-func (r *SessionsRepository) Shutdown() error {
-	r.logger.Info("Sessions database repository shutting down")
-	return r.rdb.Close()
+// Shutdown gracefully shuts down the sessions repository by closing the Redis client for session caching.
+func (r *SessionsRepository) Shutdown() {
+	r.logger.Info("Sessions repository shutting down")
+	err := r.rdb.Close()
+	if err != nil {
+		r.logger.Errorf("error while shutting down sessions repository %v", err)
+	}
 }
 
-func (r *SessionsRepository) SetSession(ctx context.Context, session models.Session, ttl time.Duration) (err error) {
+func (r *SessionsRepository) SetSession(ctx context.Context, session *models.Session, ttl time.Duration) (err error) {
 	defer r.updateMetrics(err, "SetSession")
 	defer handleError(ctx, &err)
 	defer r.logError(err, "SetSession")
 
-	r.logger.Info("Marshalling data")
-	serialized, err := json.Marshal(session)
+	r.logger.Info("Marshaling data")
+	serialized, err := json.Marshal(*session)
 	if err != nil {
 		return
 	}
 
 	tx := r.rdb.Pipeline()
 	r.logger.Info("Caching sessions data")
-	err = tx.Set(ctx, session.SessionId, serialized, ttl).Err()
+	err = tx.Set(ctx, session.SessionID, serialized, ttl).Err()
 	if err != nil {
 		return
 	}
 
 	r.logger.Info("Adding session to accounts sessions list")
-	listKey := getKeyForAccountSessionsList(session.AccountId)
-	err = tx.SAdd(ctx, listKey, session.SessionId).Err()
+	listKey := getKeyForAccountSessionsList(session.AccountID)
+	err = tx.SAdd(ctx, listKey, session.SessionID).Err()
 	if err != nil {
 		return
 	}
@@ -139,12 +136,12 @@ func (r *SessionsRepository) SetSession(ctx context.Context, session models.Sess
 	return
 }
 
-func (r *SessionsRepository) TerminateSessions(ctx context.Context, sessionsIds []string, accountId string) (err error) {
+func (r *SessionsRepository) TerminateSessions(ctx context.Context, sessionsIds []string, accountID string) (err error) {
 	defer r.updateMetrics(err, "TerminateSessions")
 	defer handleError(ctx, &err)
 	defer r.logError(err, "TerminateSessions")
 
-	accountSessions, err := r.GetSessionsForAccount(ctx, accountId)
+	accountSessions, err := r.GetSessionsForAccount(ctx, accountID)
 	if err != nil {
 		return
 	}
@@ -167,8 +164,8 @@ func (r *SessionsRepository) TerminateSessions(ctx context.Context, sessionsIds 
 		return
 	}
 
-	for _, sessionId := range toDelete {
-		err = tx.SRem(ctx, sessionId).Err()
+	for _, sessionID := range toDelete {
+		err = tx.SRem(ctx, sessionID).Err()
 		if err != nil {
 			return
 		}
@@ -177,34 +174,34 @@ func (r *SessionsRepository) TerminateSessions(ctx context.Context, sessionsIds 
 	return
 }
 
-func (r *SessionsRepository) GetSessionsIds(ctx context.Context, accountId string) (sessionsIds []string, err error) {
+func (r *SessionsRepository) GetSessionsIds(ctx context.Context, accountID string) (sessionsIds []string, err error) {
 	defer r.updateMetrics(err, "GetSessionsIds")
 	defer handleError(ctx, &err)
 	defer r.logError(err, "GetSessionsIds")
 
-	sessionsIds, err = r.rdb.SMembers(ctx, getKeyForAccountSessionsList(accountId)).Result()
+	sessionsIds, err = r.rdb.SMembers(ctx, getKeyForAccountSessionsList(accountID)).Result()
 	if err != nil || len(sessionsIds) == 0 {
 		return
 	}
 
-	sessionsIds, err = r.removeNonexistantKeys(ctx, accountId, sessionsIds)
+	sessionsIds, err = r.removeNonexistantKeys(ctx, accountID, sessionsIds)
 	return
 }
 
-// GetSession retrieves the session database for a given session ID from the Redis database.
-// It retrieves the session data from the database, and unmarshals it into a models.Session.
-// If the session data is not found in the database, it returns an error indicating that the session was not found.
-func (r *SessionsRepository) GetSession(ctx context.Context, sessionId string) (session models.Session, err error) {
+// GetSession retrieves the session repository for a given session ID from the Redis repository.
+// It retrieves the session data from the repository, and unmarshals it into a models.Session.
+// If the session data is not found in the repository, it returns an error indicating that the session was not found.
+func (r *SessionsRepository) GetSession(ctx context.Context, sessionID string) (session models.Session, err error) {
 	defer r.updateMetrics(err, "GetSession")
 	defer handleError(ctx, &err)
 	defer r.logError(err, "GetSession")
 
-	body, err := r.rdb.Get(ctx, sessionId).Bytes()
+	body, err := r.rdb.Get(ctx, sessionID).Bytes()
 	if err != nil {
 		return
 	}
 
-	r.logger.Info("Unmarshal database data")
+	r.logger.Info("Unmarshal repository data")
 	if err = json.Unmarshal(body, &session); err != nil {
 		return
 	}
@@ -212,10 +209,10 @@ func (r *SessionsRepository) GetSession(ctx context.Context, sessionId string) (
 	return
 }
 
-// UpdateLastActivityForSession updates the last activity time for a cached session in the Redis database.
+// UpdateLastActivityForSession updates the last activity time for a cached session in the Redis repository.
 // It updates the LastActivity field of the cached session, and then caches the updated session.
 func (r *SessionsRepository) UpdateLastActivityForSession(ctx context.Context,
-	cachedSession models.Session, lastActivityTime time.Time, ttl time.Duration) (err error) {
+	cachedSession *models.Session, lastActivityTime time.Time, ttl time.Duration) (err error) {
 	defer r.updateMetrics(err, "UpdateLastActivityForSession")
 	defer handleError(ctx, &err)
 	defer r.logError(err, "UpdateLastActivityForSession")
@@ -225,14 +222,14 @@ func (r *SessionsRepository) UpdateLastActivityForSession(ctx context.Context,
 	return
 }
 
-// GetSessionsForAccount retrieves the sessions associated with the specified account from the Redis database.
+// GetSessionsForAccount retrieves the sessions associated with the specified account from the Redis repository.
 func (r *SessionsRepository) GetSessionsForAccount(ctx context.Context,
-	accountId string) (sessions map[string]models.SessionInfo, err error) {
+	accountID string) (sessions map[string]*models.SessionInfo, err error) {
 	defer r.updateMetrics(err, "GetSessionsForAccount")
 	defer handleError(ctx, &err)
 	defer r.logError(err, "GetSessionsForAccount")
 
-	sessionsIds, err := r.rdb.SMembers(ctx, getKeyForAccountSessionsList(accountId)).Result()
+	sessionsIds, err := r.rdb.SMembers(ctx, getKeyForAccountSessionsList(accountID)).Result()
 	if err != nil {
 		return
 	}
@@ -242,18 +239,18 @@ func (r *SessionsRepository) GetSessionsForAccount(ctx context.Context,
 		return
 	}
 
-	sessions = make(map[string]models.SessionInfo, len(sessionsInfo))
+	sessions = make(map[string]*models.SessionInfo, len(sessionsInfo))
 	for i := range sessionsInfo {
-		var database models.Session
-		err = json.Unmarshal([]byte(sessionsInfo[i].(string)), &database)
+		var repository models.Session
+		err = json.Unmarshal([]byte(sessionsInfo[i].(string)), &repository)
 		if err != nil {
 			return
 		}
 
-		sessions[database.SessionId] = models.SessionInfo{
-			ClientIp:     database.ClientIp,
-			MachineId:    database.MachineId,
-			LastActivity: database.LastActivity,
+		sessions[repository.SessionID] = &models.SessionInfo{
+			ClientIP:     repository.ClientIP,
+			MachineID:    repository.MachineID,
+			LastActivity: repository.LastActivity,
 		}
 	}
 
@@ -264,12 +261,12 @@ type AccountSessions struct {
 	Sessions []string `json:"sessions"`
 }
 
-func (r *SessionsRepository) TerminateAllSessions(ctx context.Context, accountId string) (err error) {
+func (r *SessionsRepository) TerminateAllSessions(ctx context.Context, accountID string) (err error) {
 	defer r.updateMetrics(err, "TerminateAllSessions")
 	defer handleError(ctx, &err)
 	defer r.logError(err, "TerminateAllSessions")
 
-	listKey := getKeyForAccountSessionsList(accountId)
+	listKey := getKeyForAccountSessionsList(accountID)
 	sessionsIds, err := r.rdb.SMembers(ctx, listKey).Result()
 	if errors.Is(err, redis.Nil) || len(sessionsIds) == 0 {
 		// Not an error, just an empty sessions map for the account
@@ -302,14 +299,14 @@ func (r *SessionsRepository) logError(err error, functionName string) {
 				"error.msg":           repoErr.Msg,
 				"error.code":          repoErr.Code,
 			},
-		).Error("sessions database error occurred")
+		).Error("sessions repository error occurred")
 	} else {
 		r.logger.WithFields(
 			logrus.Fields{
 				"error.function.name": functionName,
 				"error.msg":           err.Error(),
 			},
-		).Error("sessions database error occurred")
+		).Error("sessions repository error occurred")
 	}
 }
 

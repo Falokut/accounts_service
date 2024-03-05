@@ -5,7 +5,7 @@ import (
 )
 
 type Account struct {
-	Id               string    `db:"id" json:"id"`
+	ID               string    `db:"id" json:"id"`
 	Email            string    `db:"email" json:"email"`
 	Password         string    `db:"password_hash" json:"-"`
 	RegistrationDate time.Time `db:"registration_date" json:"registration_date"`

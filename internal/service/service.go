@@ -22,11 +22,11 @@ type AccountsService interface {
 	RequestAccountVerificationToken(ctx context.Context, email, callbackURL string) error
 	VerifyAccount(ctx context.Context, token string) error
 	SignIn(ctx context.Context, dto models.SignInDTO) (sessionID string, err error)
-	GetAccountId(ctx context.Context, sessionID, machineID string) (accountID string, err error)
+	GetAccountID(ctx context.Context, sessionID, machineID string) (accountID string, err error)
 	Logout(ctx context.Context, sessionID, machineID string) error
 	RequestChangePasswordToken(ctx context.Context, email, callbackURL string) error
 	ChangePassword(ctx context.Context, token, newPassword string) error
-	GetAllSessions(ctx context.Context, sessionID, machineID string) (map[string]models.SessionInfo, error)
+	GetAllSessions(ctx context.Context, sessionID, machineID string) (map[string]*models.SessionInfo, error)
 	TerminateSessions(ctx context.Context, sessionID, machineID string, sessionsToTerminateIds []string) error
 }
 
@@ -59,13 +59,12 @@ func NewAccountsService(repo repository.AccountRepository,
 	sessionsRepository repository.SessionsRepository,
 	accountEvents events.AccountsEventsMQ,
 	tokenDeliveryMQ events.TokensDeliveryMQ,
-	cfg AccountsServiceConfig) *accountsService {
-
+	cfg *AccountsServiceConfig) *accountsService {
 	return &accountsService{accountsRepository: repo,
 		logger:                 logger,
 		registrationRepository: registrationRepository,
 		sessionsRepository:     sessionsRepository,
-		cfg:                    cfg,
+		cfg:                    *cfg,
 		tokenDeliveryMQ:        tokenDeliveryMQ,
 		accountEvents:          accountEvents,
 	}
@@ -73,7 +72,6 @@ func NewAccountsService(repo repository.AccountRepository,
 
 func (s *accountsService) CreateAccount(ctx context.Context,
 	dto models.CreateAccountDTO) (err error) {
-
 	exist, err := s.accountsRepository.IsAccountWithEmailExist(ctx, dto.Email)
 	if err != nil {
 		return err
@@ -93,7 +91,7 @@ func (s *accountsService) CreateAccount(ctx context.Context,
 	}
 
 	s.logger.Info("Generating hash from password")
-	password_hash, err := bcrypt.GenerateFromPassword([]byte(dto.Password), s.cfg.BcryptCost)
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(dto.Password), s.cfg.BcryptCost)
 	if err != nil {
 		return models.Error(models.Internal, "can't generate password hash")
 	}
@@ -101,7 +99,7 @@ func (s *accountsService) CreateAccount(ctx context.Context,
 	err = s.registrationRepository.SetAccount(ctx, dto.Email,
 		models.RegisteredAccount{
 			Username: dto.Username,
-			Password: string(password_hash),
+			Password: string(passwordHash),
 		},
 		s.cfg.NonActivatedAccountTTL)
 
@@ -110,7 +108,6 @@ func (s *accountsService) CreateAccount(ctx context.Context,
 
 func (s *accountsService) RequestAccountVerificationToken(ctx context.Context,
 	email, callbackURL string) (err error) {
-
 	exist, err := s.accountsRepository.IsAccountWithEmailExist(ctx, email)
 	if err != nil {
 		return err
@@ -144,7 +141,7 @@ func (s *accountsService) VerifyAccount(ctx context.Context, token string) (err 
 	}
 
 	err = s.createAccount(ctx, email)
-	return
+	return err
 }
 
 func (s *accountsService) createAccount(ctx context.Context, email string) (err error) {
@@ -156,7 +153,7 @@ func (s *accountsService) createAccount(ctx context.Context, email string) (err 
 
 	account := models.Account{
 		Email:            email,
-		Password:         string(repoAccount.Password),
+		Password:         repoAccount.Password,
 		RegistrationDate: time.Now().In(time.UTC).In(time.UTC),
 	}
 
@@ -168,19 +165,17 @@ func (s *accountsService) createAccount(ctx context.Context, email string) (err 
 
 	err = tx.Commit()
 	if err != nil {
-		err = models.Error(models.Internal, err.Error())
-		return
+		return models.Error(models.Internal, err.Error())
 	}
 
 	err = s.accountEvents.AccountCreated(ctx, models.AccountCreatedDTO{
-		Id:               accountID,
+		ID:               accountID,
 		Email:            account.Email,
 		RegistrationDate: account.RegistrationDate,
 		Username:         repoAccount.Username,
 	})
 	if err != nil {
-		err = models.Error(models.Internal, err.Error())
-		return
+		return models.Error(models.Internal, err.Error())
 	}
 
 	// The error is not critical, the data will still be deleted from the repository.
@@ -188,7 +183,7 @@ func (s *accountsService) createAccount(ctx context.Context, email string) (err 
 		s.logger.Warning("can't delete account from registration repository: ", err.Error())
 	}
 
-	return
+	return nil
 }
 
 func (s *accountsService) SignIn(ctx context.Context, dto models.SignInDTO) (sessionID string, err error) {
@@ -206,11 +201,11 @@ func (s *accountsService) SignIn(ctx context.Context, dto models.SignInDTO) (ses
 
 	s.logger.Info("Caching session")
 	sessionID = uuid.NewString()
-	err = s.sessionsRepository.SetSession(ctx, models.Session{
-		SessionId:    sessionID,
-		AccountId:    account.Id,
-		MachineId:    dto.MachineId,
-		ClientIp:     dto.ClientIp,
+	err = s.sessionsRepository.SetSession(ctx, &models.Session{
+		SessionID:    sessionID,
+		AccountID:    account.ID,
+		MachineID:    dto.MachineID,
+		ClientIP:     dto.ClientIP,
 		LastActivity: time.Now().In(time.UTC)}, s.cfg.SessionTTL)
 	if err != nil {
 		return "", err
@@ -219,35 +214,32 @@ func (s *accountsService) SignIn(ctx context.Context, dto models.SignInDTO) (ses
 	return
 }
 
-func (s *accountsService) GetAccountId(ctx context.Context,
+func (s *accountsService) GetAccountID(ctx context.Context,
 	sessionID, machineID string) (accountID string, err error) {
-
 	s.logger.Info("Checking session")
 	cached, err := s.checkSession(ctx, machineID, sessionID)
 	if err != nil {
-		return
+		return "", err
 	}
 
-	accountID = cached.AccountId
-	return
+	accountID = cached.AccountID
+	return accountID, nil
 }
 
 func (s *accountsService) Logout(ctx context.Context,
 	sessionID, machineID string) (err error) {
-
 	s.logger.Info("Checking session")
 	session, err := s.checkSession(ctx, machineID, sessionID)
 	if err != nil {
 		return
 	}
 
-	err = s.sessionsRepository.TerminateSessions(ctx, []string{sessionID}, session.AccountId)
+	err = s.sessionsRepository.TerminateSessions(ctx, []string{sessionID}, session.AccountID)
 	return
 }
 
 func (s *accountsService) RequestChangePasswordToken(ctx context.Context,
 	email, callbackURL string) (err error) {
-
 	exist, err := s.accountsRepository.IsAccountWithEmailExist(ctx, email)
 	if err != nil {
 		return err
@@ -290,7 +282,7 @@ func (s *accountsService) ChangePassword(ctx context.Context, token, newPassword
 	}
 
 	s.logger.Info("Generating hash for incoming password")
-	password_hash, err := bcrypt.GenerateFromPassword([]byte(newPassword),
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(newPassword),
 		s.cfg.BcryptCost)
 	if err != nil {
 		err = models.Error(models.Internal, "can't generate password hash.")
@@ -298,20 +290,19 @@ func (s *accountsService) ChangePassword(ctx context.Context, token, newPassword
 	}
 
 	s.logger.Info("Changing account password")
-	err = s.accountsRepository.ChangePassword(ctx, email, string(password_hash))
+	err = s.accountsRepository.ChangePassword(ctx, email, string(passwordHash))
 	return
 }
 
 func (s *accountsService) GetAllSessions(ctx context.Context,
-	sessionID, machineID string) (sessions map[string]models.SessionInfo, err error) {
-
+	sessionID, machineID string) (sessions map[string]*models.SessionInfo, err error) {
 	s.logger.Info("Checking session")
 	cache, err := s.checkSession(ctx, machineID, sessionID)
 	if err != nil {
 		return
 	}
 
-	sessions, err = s.sessionsRepository.GetSessionsForAccount(ctx, cache.AccountId)
+	sessions, err = s.sessionsRepository.GetSessionsForAccount(ctx, cache.AccountID)
 	if err != nil {
 		return
 	}
@@ -321,7 +312,6 @@ func (s *accountsService) GetAllSessions(ctx context.Context,
 
 func (s *accountsService) TerminateSessions(ctx context.Context,
 	sessionID, machineID string, sessionsToTerminateIds []string) (err error) {
-
 	s.logger.Info("Checking session")
 	cache, err := s.checkSession(ctx, machineID, sessionID)
 	if err != nil {
@@ -329,7 +319,7 @@ func (s *accountsService) TerminateSessions(ctx context.Context,
 	}
 
 	s.logger.Info("Terminating sessions")
-	if err = s.sessionsRepository.TerminateSessions(ctx, sessionsToTerminateIds, cache.AccountId); err != nil {
+	if err = s.sessionsRepository.TerminateSessions(ctx, sessionsToTerminateIds, cache.AccountID); err != nil {
 		return
 	}
 
@@ -339,31 +329,31 @@ func (s *accountsService) TerminateSessions(ctx context.Context,
 func (s *accountsService) DeleteAccount(ctx context.Context, sessionID, machineID string) (err error) {
 	cache, err := s.checkSession(ctx, machineID, sessionID)
 	if err != nil {
-		return
+		return err
 	}
 
-	email, err := s.accountsRepository.GetAccountEmail(ctx, cache.AccountId)
+	email, err := s.accountsRepository.GetAccountEmail(ctx, cache.AccountID)
 	if err != nil {
-		return
+		return err
 	}
 
-	tx, err := s.accountsRepository.DeleteAccount(ctx, cache.AccountId)
+	tx, err := s.accountsRepository.DeleteAccount(ctx, cache.AccountID)
 	if err != nil {
-		return
+		return err
 	}
 
-	err = s.accountEvents.AccountDeleted(ctx, email, cache.AccountId)
+	err = s.accountEvents.AccountDeleted(ctx, email, cache.AccountID)
 	if err != nil {
-		return
+		return err
 	}
 	err = tx.Commit()
 	if err != nil {
-		return
+		return models.Error(models.Internal, err.Error())
 	}
 
 	go func() {
 		for i := uint32(0); i < s.cfg.NumRetriesForTerminateSessions; i++ {
-			err = s.sessionsRepository.TerminateAllSessions(context.Background(), cache.AccountId)
+			err = s.sessionsRepository.TerminateAllSessions(context.Background(), cache.AccountID)
 			if err == nil {
 				return
 			}
@@ -371,8 +361,7 @@ func (s *accountsService) DeleteAccount(ctx context.Context, sessionID, machineI
 		}
 	}()
 
-	return
-
+	return nil
 }
 
 // Also updates last activity time at background
@@ -383,7 +372,7 @@ func (s *accountsService) checkSession(ctx context.Context, machineID, sessionID
 		return
 	}
 
-	if machineID != session.MachineId {
+	if machineID != session.MachineID {
 		err = models.Error(models.Unauthenticated, "invalid session or machine id")
 		session = models.Session{}
 		return
@@ -392,7 +381,7 @@ func (s *accountsService) checkSession(ctx context.Context, machineID, sessionID
 	go func(session models.Session, lastActivityTime time.Time) {
 		s.logger.Info("Updating last activity for session")
 		err = s.sessionsRepository.UpdateLastActivityForSession(context.Background(),
-			session, lastActivityTime, s.cfg.SessionTTL)
+			&session, lastActivityTime, s.cfg.SessionTTL)
 		if err != nil {
 			s.logger.Warning("Session last activity not updated, error: ", err.Error())
 		}
