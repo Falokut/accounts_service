@@ -16,6 +16,10 @@ func validateSignupInput(input *accounts_service.CreateAccountRequest) error {
 		return errors.New("passwords don't match")
 	}
 
+	if err := validateUsername(input.Username); err != nil {
+		return err
+	}
+
 	if err := validatePassword(input.Password); err != nil {
 		return err
 	}
@@ -25,11 +29,19 @@ func validateSignupInput(input *accounts_service.CreateAccountRequest) error {
 
 	return nil
 }
+func validateUsername(username string) error {
+	usernameLength := len(username)
+	if usernameLength < 3 || usernameLength > 32 {
+		return errors.New("username must be less than 32 symbols and more than 3")
+	}
+
+	return nil
+}
 
 func validatePassword(password string) error {
-	passwordLengh := len(password)
-	if passwordLengh < 6 || passwordLengh > 32 {
-		return errors.New("the password must be less than 32 symbols and more than 6")
+	passwordLength := len(password)
+	if passwordLength < 6 || passwordLength > 32 {
+		return errors.New("password must be less than 32 symbols and more than 6")
 	}
 
 	return nil

@@ -180,7 +180,7 @@ func (s *accountsService) createAccount(ctx context.Context, email string) (err 
 
 	// The error is not critical, the data will still be deleted from the repository.
 	if err = s.registrationRepository.DeleteAccount(ctx, email); err != nil {
-		s.logger.Warning("can't delete account from registration repository: ", err.Error())
+		s.logger.Error("error while deleting account from registration repository: ", err.Error())
 	}
 
 	return nil
