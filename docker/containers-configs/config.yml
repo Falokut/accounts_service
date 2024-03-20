@@ -43,11 +43,10 @@ jaeger:
   address: jaeger:6831
   log_spans: true
 
+nonactivated_account_ttl: 3h
 JWT:
   change_password_token:
     ttl: 2h
-  verify_account_token:
-    ttl: 3h
 
 prometheus:
   service_name: "Accounts_Service"

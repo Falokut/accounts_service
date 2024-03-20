@@ -180,7 +180,7 @@ func getAccountServiceConfig(cfg *config.Config) *service.AccountsServiceConfig 
 	return &service.AccountsServiceConfig{
 		ChangePasswordTokenTTL:             cfg.JWT.ChangePasswordToken.TTL,
 		ChangePasswordTokenSecret:          cfg.JWT.ChangePasswordToken.Secret,
-		VerifyAccountTokenTTL:              cfg.JWT.VerifyAccountToken.TTL,
+		VerifyAccountTokenTTL:              cfg.NonActivatedAccountTTL,
 		VerifyAccountTokenSecret:           cfg.JWT.VerifyAccountToken.Secret,
 		NumRetriesForTerminateSessions:     cfg.NumRetriesForTerminateSessions,
 		RetrySleepTimeForTerminateSessions: cfg.RetrySleepTimeForTerminateSessions,

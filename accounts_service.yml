@@ -1,19 +1,14 @@
 version: "3.8"
 
-# include:
-#   - accounts_db/accounts_db.yml
-#   - kafka-cluster.yml
+include:
+  - accounts_db/accounts_db.yml
+  - kafka-cluster.yml
 
 networks:
   accounts_service_network:
     name: "accounts_service_net"
     driver: bridge
-  kafka_network:
-    name: "kafka_network"
-    external: true
-  accounts_db_network:
-    name: "accounts_db_network"
-    external: true
+
 services:
   accounts_service:
     build:
@@ -27,13 +22,13 @@ services:
       - accounts_service_network
       - kafka_network
       - accounts_db_network
-    # depends_on:
-    #   redis:
-    #     condition: service_healthy
-    #   accounts_pool:
-    #     condition: service_started
-    #   kafka:
-    #     condition: service_healthy
+    depends_on:
+      redis:
+        condition: service_healthy
+      accounts_pool:
+        condition: service_started
+      kafka:
+        condition: service_healthy
     healthcheck:
       test: wget --no-verbose --tries=1 --spider 'http://localhost:7001/healthcheck' || exit 1
       interval: 40s
@@ -57,25 +52,25 @@ services:
       servicename: "accounts_service"
       org.label-schema.group: "monitoring"
 
-  # redis:
-  #   #container_name: account_service_cache
-  #   hostname: redis
-  #   image: redis:7.2.1-alpine
-  #   volumes:
-  #     - ./.container_data/cache/data:/data
-  #   ports:
-  #     - 6378:6379
-  #   networks:
-  #     - accounts_service_network
-  #   environment:
-  #     ALLOW_EMPTY_PASSWORD: no
-  #     REDIS_PASSWORD: ${REDIS_PASSWORD}
-  #     REDIS_AOF_ENABLED: ${REDIS_AOF_ENABLED}
-  #   healthcheck:
-  #     test: ["CMD", "redis-cli", "ping"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
-  #   deploy:
-  #     restart_policy:
-  #       condition: unless-stopped
+  redis:
+    container_name: accounts_service_cache
+    hostname: redis
+    image: redis:7.2.1-alpine
+    volumes:
+      - ./.container_data/cache/data:/data
+    ports:
+      - 6378:6379
+    networks:
+      - accounts_service_network
+    environment:
+      ALLOW_EMPTY_PASSWORD: no
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_AOF_ENABLED: ${REDIS_AOF_ENABLED}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      restart_policy:
+        condition: unless-stopped

@@ -141,35 +141,56 @@ func (r *SessionsRepository) TerminateSessions(ctx context.Context, sessionsIds 
 	defer handleError(ctx, &err)
 	defer r.logError(err, "TerminateSessions")
 
-	accountSessions, err := r.GetSessionsForAccount(ctx, accountID)
+	if len(sessionsIds) == 0 {
+		err = models.Error(models.InvalidArgument, "invalid sessions ids, it mustn't be empty")
+		return
+	}
+
+	accountSessions, err := r.GetSessionsIds(ctx, accountID)
+	if models.Code(err) == models.NotFound {
+		err = models.Error(models.InvalidArgument, "invalid sessions ids, not found any")
+		return
+	}
 	if err != nil {
 		return
 	}
 
+	var accountSessionsSet = make(map[string]struct{}, len(sessionsIds))
+	for i := range accountSessions {
+		accountSessionsSet[accountSessions[i]] = struct{}{}
+	}
+
 	toDelete := make([]string, 0, len(sessionsIds))
 	for i := range sessionsIds {
-		_, ok := accountSessions[sessionsIds[i]]
+		_, ok := accountSessionsSet[sessionsIds[i]]
 		if ok {
 			toDelete = append(toDelete, sessionsIds[i])
 		}
 	}
 	if len(toDelete) == 0 {
-		err = models.Error(models.InvalidArgument, "invalid sessions ids, not found any")
+		err = models.Error(models.InvalidArgument, "invalid sessions ids, not found any to terminate")
 		return
 	}
 
 	tx := r.rdb.Pipeline()
 	err = tx.Del(ctx, toDelete...).Err()
-	if err != nil {
+	if errors.Is(err, redis.Nil) {
+		err = nil
+	} else if err != nil {
 		return
 	}
 
-	for _, sessionID := range toDelete {
-		err = tx.SRem(ctx, sessionID).Err()
-		if err != nil {
-			return
+	if len(toDelete) == len(accountSessions) {
+		err = tx.Del(ctx, getKeyForAccountSessionsList(accountID)).Err()
+	} else {
+		for _, sessionID := range toDelete {
+			err = tx.SRem(ctx, sessionID).Err()
+			if err != nil {
+				return
+			}
 		}
 	}
+
 	_, err = tx.Exec(ctx)
 	return
 }
@@ -242,6 +263,9 @@ func (r *SessionsRepository) GetSessionsForAccount(ctx context.Context,
 	sessions = make(map[string]*models.SessionInfo, len(sessionsInfo))
 	for i := range sessionsInfo {
 		var repository models.Session
+		if sessionsInfo[i] == nil {
+			continue
+		}
 		err = json.Unmarshal([]byte(sessionsInfo[i].(string)), &repository)
 		if err != nil {
 			return

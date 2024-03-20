@@ -353,8 +353,8 @@ func (s *accountsService) DeleteAccount(ctx context.Context, sessionID, machineI
 
 	go func() {
 		for i := uint32(0); i < s.cfg.NumRetriesForTerminateSessions; i++ {
-			err = s.sessionsRepository.TerminateAllSessions(context.Background(), cache.AccountID)
-			if err == nil {
+			terr := s.sessionsRepository.TerminateAllSessions(context.Background(), cache.AccountID)
+			if terr == nil || models.Code(terr) == models.NotFound {
 				return
 			}
 			time.Sleep(s.cfg.RetrySleepTimeForTerminateSessions)
@@ -380,10 +380,10 @@ func (s *accountsService) checkSession(ctx context.Context, machineID, sessionID
 
 	go func(session models.Session, lastActivityTime time.Time) {
 		s.logger.Info("Updating last activity for session")
-		err = s.sessionsRepository.UpdateLastActivityForSession(context.Background(),
+		terr := s.sessionsRepository.UpdateLastActivityForSession(context.Background(),
 			&session, lastActivityTime, s.cfg.SessionTTL)
-		if err != nil {
-			s.logger.Warning("Session last activity not updated, error: ", err.Error())
+		if terr != nil && models.Code(terr) != models.NotFound {
+			s.logger.Warning("Session last activity not updated, error: ", terr.Error())
 		}
 	}(session, time.Now().In(time.UTC))
 

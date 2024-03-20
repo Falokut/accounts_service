@@ -129,7 +129,7 @@ func (h *AccountsServiceHandler) GetAccountID(ctx context.Context,
 }
 
 func (h *AccountsServiceHandler) Logout(ctx context.Context,
-	_ *emptypb.Empty) (res *emptypb.Empty, err error) {
+	_ *emptypb.Empty) (_ *emptypb.Empty, err error) {
 	defer h.handleError(&err)
 
 	sessionID, machineID, err := h.getAuthHeaders(ctx)
