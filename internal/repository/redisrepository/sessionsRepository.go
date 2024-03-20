@@ -45,9 +45,9 @@ func getKeyForAccountSessionsList(accountID string) string {
 
 func (r *SessionsRepository) removeNonexistantKeys(ctx context.Context,
 	accountID string, keys []string) (existsKeys []string, err error) {
-	defer r.updateMetrics(err, "removeNonexistantKeys")
+	defer r.updateMetrics(&err, "removeNonexistantKeys")
 	defer handleError(ctx, &err)
-	defer r.logError(err, "removeNonexistantKeys")
+	defer r.logError(&err, "removeNonexistantKeys")
 
 	if len(keys) == 0 {
 		return []string{}, nil
@@ -104,9 +104,9 @@ func (r *SessionsRepository) Shutdown() {
 }
 
 func (r *SessionsRepository) SetSession(ctx context.Context, session *models.Session, ttl time.Duration) (err error) {
-	defer r.updateMetrics(err, "SetSession")
+	defer r.updateMetrics(&err, "SetSession")
 	defer handleError(ctx, &err)
-	defer r.logError(err, "SetSession")
+	defer r.logError(&err, "SetSession")
 
 	r.logger.Info("Marshaling data")
 	serialized, err := json.Marshal(*session)
@@ -137,56 +137,25 @@ func (r *SessionsRepository) SetSession(ctx context.Context, session *models.Ses
 }
 
 func (r *SessionsRepository) TerminateSessions(ctx context.Context, sessionsIds []string, accountID string) (err error) {
-	defer r.updateMetrics(err, "TerminateSessions")
+	defer r.updateMetrics(&err, "TerminateSessions")
 	defer handleError(ctx, &err)
-	defer r.logError(err, "TerminateSessions")
+	defer r.logError(&err, "TerminateSessions")
 
 	if len(sessionsIds) == 0 {
 		err = models.Error(models.InvalidArgument, "invalid sessions ids, it mustn't be empty")
 		return
 	}
 
-	accountSessions, err := r.GetSessionsIds(ctx, accountID)
-	if models.Code(err) == models.NotFound {
-		return nil
-	}
-	if err != nil {
-		return
-	}
-
-	var accountSessionsSet = make(map[string]struct{}, len(sessionsIds))
-	for i := range accountSessions {
-		accountSessionsSet[accountSessions[i]] = struct{}{}
-	}
-
-	toDelete := make([]string, 0, len(sessionsIds))
-	for i := range sessionsIds {
-		_, ok := accountSessionsSet[sessionsIds[i]]
-		if ok {
-			toDelete = append(toDelete, sessionsIds[i])
-		}
-	}
-	if len(toDelete) == 0 {
+	sessionsIds, err = r.removeNonexistantKeys(ctx, accountID, sessionsIds)
+	if len(sessionsIds) == 0 {
 		return nil
 	}
 
 	tx := r.rdb.Pipeline()
-	err = tx.Del(ctx, toDelete...).Err()
-	if errors.Is(err, redis.Nil) {
-		err = nil
-	} else if err != nil {
+	tx.Del(ctx, sessionsIds...)
+	err = tx.SRem(ctx, getKeyForAccountSessionsList(accountID), sessionsIds).Err()
+	if err != nil {
 		return
-	}
-
-	if len(toDelete) == len(accountSessions) {
-		err = tx.Del(ctx, getKeyForAccountSessionsList(accountID)).Err()
-	} else {
-		for _, sessionID := range toDelete {
-			err = tx.SRem(ctx, sessionID).Err()
-			if err != nil {
-				return
-			}
-		}
 	}
 
 	_, err = tx.Exec(ctx)
@@ -194,9 +163,9 @@ func (r *SessionsRepository) TerminateSessions(ctx context.Context, sessionsIds 
 }
 
 func (r *SessionsRepository) GetSessionsIds(ctx context.Context, accountID string) (sessionsIds []string, err error) {
-	defer r.updateMetrics(err, "GetSessionsIds")
+	defer r.updateMetrics(&err, "GetSessionsIds")
 	defer handleError(ctx, &err)
-	defer r.logError(err, "GetSessionsIds")
+	defer r.logError(&err, "GetSessionsIds")
 
 	sessionsIds, err = r.rdb.SMembers(ctx, getKeyForAccountSessionsList(accountID)).Result()
 	if err != nil || len(sessionsIds) == 0 {
@@ -211,9 +180,9 @@ func (r *SessionsRepository) GetSessionsIds(ctx context.Context, accountID strin
 // It retrieves the session data from the repository, and unmarshals it into a models.Session.
 // If the session data is not found in the repository, it returns an error indicating that the session was not found.
 func (r *SessionsRepository) GetSession(ctx context.Context, sessionID string) (session models.Session, err error) {
-	defer r.updateMetrics(err, "GetSession")
+	defer r.updateMetrics(&err, "GetSession")
 	defer handleError(ctx, &err)
-	defer r.logError(err, "GetSession")
+	defer r.logError(&err, "GetSession")
 
 	body, err := r.rdb.Get(ctx, sessionID).Bytes()
 	if err != nil {
@@ -232,9 +201,9 @@ func (r *SessionsRepository) GetSession(ctx context.Context, sessionID string) (
 // It updates the LastActivity field of the cached session, and then caches the updated session.
 func (r *SessionsRepository) UpdateLastActivityForSession(ctx context.Context,
 	cachedSession *models.Session, lastActivityTime time.Time, ttl time.Duration) (err error) {
-	defer r.updateMetrics(err, "UpdateLastActivityForSession")
+	defer r.updateMetrics(&err, "UpdateLastActivityForSession")
 	defer handleError(ctx, &err)
-	defer r.logError(err, "UpdateLastActivityForSession")
+	defer r.logError(&err, "UpdateLastActivityForSession")
 
 	cachedSession.LastActivity = lastActivityTime
 	err = r.SetSession(ctx, cachedSession, ttl)
@@ -244,9 +213,9 @@ func (r *SessionsRepository) UpdateLastActivityForSession(ctx context.Context,
 // GetSessionsForAccount retrieves the sessions associated with the specified account from the Redis repository.
 func (r *SessionsRepository) GetSessionsForAccount(ctx context.Context,
 	accountID string) (sessions map[string]*models.SessionInfo, err error) {
-	defer r.updateMetrics(err, "GetSessionsForAccount")
+	defer r.updateMetrics(&err, "GetSessionsForAccount")
 	defer handleError(ctx, &err)
-	defer r.logError(err, "GetSessionsForAccount")
+	defer r.logError(&err, "GetSessionsForAccount")
 
 	sessionsIds, err := r.rdb.SMembers(ctx, getKeyForAccountSessionsList(accountID)).Result()
 	if err != nil {
@@ -284,9 +253,9 @@ type AccountSessions struct {
 }
 
 func (r *SessionsRepository) TerminateAllSessions(ctx context.Context, accountID string) (err error) {
-	defer r.updateMetrics(err, "TerminateAllSessions")
+	defer r.updateMetrics(&err, "TerminateAllSessions")
 	defer handleError(ctx, &err)
-	defer r.logError(err, "TerminateAllSessions")
+	defer r.logError(&err, "TerminateAllSessions")
 
 	listKey := getKeyForAccountSessionsList(accountID)
 	sessionsIds, err := r.rdb.SMembers(ctx, listKey).Result()
@@ -308,11 +277,12 @@ func (r *SessionsRepository) TerminateAllSessions(ctx context.Context, accountID
 	return
 }
 
-func (r *SessionsRepository) logError(err error, functionName string) {
-	if err == nil {
+func (r *SessionsRepository) logError(errptr *error, functionName string) {
+	if errptr == nil || *errptr == nil {
 		return
 	}
 
+	err := *errptr
 	var repoErr = &models.ServiceError{}
 	if errors.As(err, &repoErr) {
 		r.logger.WithFields(
@@ -332,12 +302,12 @@ func (r *SessionsRepository) logError(err error, functionName string) {
 	}
 }
 
-func (r *SessionsRepository) updateMetrics(err error, functionName string) {
-	if err == nil {
+func (r *SessionsRepository) updateMetrics(errptr *error, functionName string) {
+	if errptr == nil || *errptr == nil {
 		r.metrics.IncCacheHits(functionName)
 		return
 	}
-	if models.Code(err) == models.NotFound {
+	if models.Code(*errptr) == models.NotFound {
 		r.metrics.IncCacheMiss(functionName)
 	}
 }

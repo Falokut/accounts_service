@@ -185,6 +185,9 @@ func (h *AccountsServiceHandler) GetAllSessions(ctx context.Context,
 	}
 
 	sessions, err := h.accountsService.GetAllSessions(ctx, sessionID, machineID)
+	if err != nil {
+		return
+	}
 	sessionsInfo := make(map[string]*accounts_service.SessionInfo, len(sessions))
 	for key, info := range sessions {
 		sessionsInfo[key] = &accounts_service.SessionInfo{

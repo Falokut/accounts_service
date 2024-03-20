@@ -378,6 +378,10 @@ func (s *accountsService) DeleteAccount(ctx context.Context, sessionID, machineI
 func (s *accountsService) checkSession(ctx context.Context, machineID, sessionID string) (session models.Session, err error) {
 	s.logger.Info("Getting session cache")
 	session, err = s.sessionsRepository.GetSession(ctx, sessionID)
+	if models.Code(err) == models.NotFound {
+		err = models.Error(models.Unauthenticated, "session not found")
+		return
+	}
 	if err != nil {
 		return
 	}
@@ -401,14 +405,8 @@ func (s *accountsService) updateSession(ctx context.Context, session *models.Ses
 
 func (s *accountsService) checkAndUpdateSession(ctx context.Context, machineID, sessionID string) (session models.Session, err error) {
 	s.logger.Info("Getting session cache")
-	session, err = s.sessionsRepository.GetSession(ctx, sessionID)
+	session, err = s.checkSession(ctx, machineID, sessionID)
 	if err != nil {
-		return
-	}
-
-	if machineID != session.MachineID {
-		err = models.Error(models.Unauthenticated, "invalid session or machine id")
-		session = models.Session{}
 		return
 	}
 
