@@ -148,8 +148,7 @@ func (r *SessionsRepository) TerminateSessions(ctx context.Context, sessionsIds 
 
 	accountSessions, err := r.GetSessionsIds(ctx, accountID)
 	if models.Code(err) == models.NotFound {
-		err = models.Error(models.InvalidArgument, "invalid sessions ids, not found any")
-		return
+		return nil
 	}
 	if err != nil {
 		return
@@ -168,8 +167,7 @@ func (r *SessionsRepository) TerminateSessions(ctx context.Context, sessionsIds 
 		}
 	}
 	if len(toDelete) == 0 {
-		err = models.Error(models.InvalidArgument, "invalid sessions ids, not found any to terminate")
-		return
+		return nil
 	}
 
 	tx := r.rdb.Pipeline()

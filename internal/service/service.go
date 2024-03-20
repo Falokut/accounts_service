@@ -217,7 +217,7 @@ func (s *accountsService) SignIn(ctx context.Context, dto models.SignInDTO) (ses
 func (s *accountsService) GetAccountID(ctx context.Context,
 	sessionID, machineID string) (accountID string, err error) {
 	s.logger.Info("Checking session")
-	cached, err := s.checkSession(ctx, machineID, sessionID)
+	cached, err := s.checkAndUpdateSession(ctx, machineID, sessionID)
 	if err != nil {
 		return "", err
 	}
@@ -297,7 +297,7 @@ func (s *accountsService) ChangePassword(ctx context.Context, token, newPassword
 func (s *accountsService) GetAllSessions(ctx context.Context,
 	sessionID, machineID string) (sessions map[string]*models.SessionInfo, err error) {
 	s.logger.Info("Checking session")
-	cache, err := s.checkSession(ctx, machineID, sessionID)
+	cache, err := s.checkAndUpdateSession(ctx, machineID, sessionID)
 	if err != nil {
 		return
 	}
@@ -313,13 +313,24 @@ func (s *accountsService) GetAllSessions(ctx context.Context,
 func (s *accountsService) TerminateSessions(ctx context.Context,
 	sessionID, machineID string, sessionsToTerminateIds []string) (err error) {
 	s.logger.Info("Checking session")
-	cache, err := s.checkSession(ctx, machineID, sessionID)
+	session, err := s.checkAndUpdateSession(ctx, machineID, sessionID)
 	if err != nil {
 		return
 	}
 
+	var logout bool
+	for i := range sessionsToTerminateIds {
+		if sessionID == sessionsToTerminateIds[i] {
+			logout = true
+			break
+		}
+	}
+	if !logout {
+		go s.updateSession(context.Background(), &session, time.Now().In(time.UTC))
+	}
+
 	s.logger.Info("Terminating sessions")
-	if err = s.sessionsRepository.TerminateSessions(ctx, sessionsToTerminateIds, cache.AccountID); err != nil {
+	if err = s.sessionsRepository.TerminateSessions(ctx, sessionsToTerminateIds, session.AccountID); err != nil {
 		return
 	}
 
@@ -327,22 +338,22 @@ func (s *accountsService) TerminateSessions(ctx context.Context,
 }
 
 func (s *accountsService) DeleteAccount(ctx context.Context, sessionID, machineID string) (err error) {
-	cache, err := s.checkSession(ctx, machineID, sessionID)
+	session, err := s.checkSession(ctx, machineID, sessionID)
 	if err != nil {
 		return err
 	}
 
-	email, err := s.accountsRepository.GetAccountEmail(ctx, cache.AccountID)
+	email, err := s.accountsRepository.GetAccountEmail(ctx, session.AccountID)
 	if err != nil {
 		return err
 	}
 
-	tx, err := s.accountsRepository.DeleteAccount(ctx, cache.AccountID)
+	tx, err := s.accountsRepository.DeleteAccount(ctx, session.AccountID)
 	if err != nil {
 		return err
 	}
 
-	err = s.accountEvents.AccountDeleted(ctx, email, cache.AccountID)
+	err = s.accountEvents.AccountDeleted(ctx, email, session.AccountID)
 	if err != nil {
 		return err
 	}
@@ -351,20 +362,19 @@ func (s *accountsService) DeleteAccount(ctx context.Context, sessionID, machineI
 		return models.Error(models.Internal, err.Error())
 	}
 
-	go func() {
+	go func(session models.Session) {
 		for i := uint32(0); i < s.cfg.NumRetriesForTerminateSessions; i++ {
-			terr := s.sessionsRepository.TerminateAllSessions(context.Background(), cache.AccountID)
+			terr := s.sessionsRepository.TerminateAllSessions(context.Background(), session.AccountID)
 			if terr == nil || models.Code(terr) == models.NotFound {
 				return
 			}
 			time.Sleep(s.cfg.RetrySleepTimeForTerminateSessions)
 		}
-	}()
+	}(session)
 
 	return nil
 }
 
-// Also updates last activity time at background
 func (s *accountsService) checkSession(ctx context.Context, machineID, sessionID string) (session models.Session, err error) {
 	s.logger.Info("Getting session cache")
 	session, err = s.sessionsRepository.GetSession(ctx, sessionID)
@@ -377,15 +387,31 @@ func (s *accountsService) checkSession(ctx context.Context, machineID, sessionID
 		session = models.Session{}
 		return
 	}
+	return
+}
 
-	go func(session models.Session, lastActivityTime time.Time) {
-		s.logger.Info("Updating last activity for session")
-		terr := s.sessionsRepository.UpdateLastActivityForSession(context.Background(),
-			&session, lastActivityTime, s.cfg.SessionTTL)
-		if terr != nil && models.Code(terr) != models.NotFound {
-			s.logger.Warning("Session last activity not updated, error: ", terr.Error())
-		}
-	}(session, time.Now().In(time.UTC))
+func (s *accountsService) updateSession(ctx context.Context, session *models.Session, lastActivityTime time.Time) {
+	s.logger.Info("Updating last activity for session")
+	err := s.sessionsRepository.UpdateLastActivityForSession(ctx,
+		session, lastActivityTime, s.cfg.SessionTTL)
+	if err != nil && models.Code(err) != models.NotFound {
+		s.logger.Warning("Session last activity not updated, error: ", err.Error())
+	}
+}
 
+func (s *accountsService) checkAndUpdateSession(ctx context.Context, machineID, sessionID string) (session models.Session, err error) {
+	s.logger.Info("Getting session cache")
+	session, err = s.sessionsRepository.GetSession(ctx, sessionID)
+	if err != nil {
+		return
+	}
+
+	if machineID != session.MachineID {
+		err = models.Error(models.Unauthenticated, "invalid session or machine id")
+		session = models.Session{}
+		return
+	}
+
+	go s.updateSession(context.Background(), &session, time.Now().In(time.UTC))
 	return
 }

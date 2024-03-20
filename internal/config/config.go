@@ -58,7 +58,7 @@ type Config struct {
 		} `yaml:"change_password_token"`
 
 		VerifyAccountToken struct {
-			Secret string        `yaml:"secret" env:"VERIFY_ACCOUNT_TOKEN_SECRET"`
+			Secret string `yaml:"secret" env:"VERIFY_ACCOUNT_TOKEN_SECRET"`
 		} `yaml:"verify_account_token"`
 	} `yaml:"JWT"`
 
